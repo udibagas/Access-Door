@@ -15,6 +15,7 @@ import subprocess
 class Main(QtGui.QWidget, main_ui.Ui_Form):
     def __init__(self):
         super(self.__class__, self).__init__()
+        global pin_buka_pintu
         self.setAttribute(QtCore.Qt.WA_DeleteOnClose)
         self.setupUi(self)
 
@@ -30,12 +31,40 @@ class Main(QtGui.QWidget, main_ui.Ui_Form):
         self.connect(self.scan_thread, QtCore.SIGNAL('updateInfo'), self.update_info)
         self.scan_thread.start()
 
+        self.manual_open_thread = ManualOpenThread()
+        self.connect(self.manual_open_thread, QtCore.SIGNAL('open_door'), self.open_door)
+        self.manual_open_thread.start()
+
+    def open_door(self):
+        GPIO.output(pin_buka_pintu, 1)
+        time.sleep(3)
+        GPIO.output(pin_buka_pintu, 0)
+
     def update_info(self, info):
         self.info.setText(info)
 
     def update_clock(self):
         self.tanggal.setText(time.strftime("%d %b %Y"))
         self.jam.setText(time.strftime("%H:%M:%S"))
+
+class ManualOpenThread(QtCore.QThread):
+    def __init__(self):
+        super(self.__class__, self).__init__()
+        self.exiting = False
+        global pin_buka_manual
+        global pin_status_pintu
+
+    def __del__(self):
+        self.exiting = True
+        self.wait()
+
+    def run(self):
+        while not self.exiting:
+            while GPIO.input(pin_buka_manual) or pin_status_pintu:
+                pass
+
+            self.emit(QtCore.SIGNAL('open_door'))
+
 
 class ScanThread(QtCore.QThread):
     def __init__(self):
@@ -80,18 +109,31 @@ class ScanThread(QtCore.QThread):
                 continue
 
             self.emit(QtCore.SIGNAL('updateInfo'), "SILAKAN MASUK, " + result[1].upper())
+            GPIO.output(pin_buka_pintu, 1)
+            terlalu_lama = False
+            start_time = datetime.now()
 
+            while GPIO.input(pin_status_pintu == 1):
+                if secs(start_time) > 3:
+                    terlalu_lama = True
+                    break
+
+            if terlalu_lama:
+                GPIO.output(pin_buka_pintu, 0)
+                self.emit(QtCore.SIGNAL('updateInfo'), "WAKTU HABIS")
+                continue
+
+            # kunci kembali pintu
+            time.sleep(3)
+            GPIO.output(buka_pintu, 0)
             cur = db_con.cursor()
             cur.execute("INSERT INTO `log` (`karyawan_id`) VALUES (?)", (result[0],))
             cur.close()
             db_con.commit()
 
-            # buka kunci pintu selama 3 detik
-            # GPIO.output(buka_pintu, 1)
-            time.sleep(10)
-            # kunci kembali pintu
-            # GPIO.output(buka_pintu, 0)
-
+            while GPIO.input(pin_status_pintu == 0):
+                self.emit(QtCore.SIGNAL('updateInfo'), "MOHON TUTUP PINTU")
+                time.sleep(1)
 
 class FP():
     def __init__(self, device):
@@ -184,6 +226,10 @@ class FP():
                 # untuk disimpan di database
                 return fp_id
 
+def secs(start_time):
+    dt = datetime.now() - start_time
+    return dt.seconds
+
 
 if __name__ == "__main__":
     # db_con = MySQLdb.connect(host="localhost", user="root", passwd="bismillah", db="access_door")
@@ -202,15 +248,19 @@ if __name__ == "__main__":
         `karyawan_id` int(11) NOT NULL, \
         `waktu` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP)")
 
-    fp = FP("/dev/ttyUSB0")
+    fp = FP("/dev/serial1")
 
     # PIN pada raspberry
-    buka_pintu = 37  # untuk trigger buka pintu
+    pin_buka_pintu = 36  # untuk trigger buka pintu
+    pin_status_pintu = 38
+    pin_buka_manual = 40
 
     # inisiasi GPIO pada raspberry
-    # GPIO.setmode(GPIO.BOARD)
-    # GPIO.setwarnings(False)
-    # GPIO.setup(buka_pintu, GPIO.OUT)
+    GPIO.setmode(GPIO.BOARD)
+    GPIO.setwarnings(False)
+    GPIO.setup(pin_buka_pintu, GPIO.OUT)
+    GPIO.setup(pin_status_pintu, GPIO.IN , pull_up_down=GPIO.PUD_UP)
+    GPIO.setup(pin_buka_manual, GPIO.IN, pull_up_down=GPIO.PUD_UP)
 
     if len(sys.argv) > 1 and sys.argv[1] == "run":
         app = QtGui.QApplication(sys.argv)
@@ -356,16 +406,31 @@ if __name__ == "__main__":
 
                 if result:
                     print "SELAMAT DATANG " + result[1] + ". SILAKAN MASUK."
+                    GPIO.output(pin_buka_pintu, 1)
+                    terlalu_lama = False
+                    start_time = datetime.now()
+
+                    while GPIO.input(pin_status_pintu == 1):
+                        if secs(start_time) > 3:
+                            terlalu_lama = True
+                            break
+
+                    if terlalu_lama:
+                        GPIO.output(pin_buka_pintu, 0)
+                        print "Anda terlalu lama. Pintu nutup lagi."
+                        continue
+
+                    # kunci kembali pintu
+                    time.sleep(3)
+                    GPIO.output(buka_pintu, 0)
                     cur = db_con.cursor()
                     cur.execute("INSERT INTO `log` (`karyawan_id`) VALUES (?)", (result[0],))
                     cur.close()
                     db_con.commit()
 
-                    # buka kunci pintu selama 3 detik
-                    # GPIO.output(buka_pintu, 1)
-                    time.sleep(10)
-                    # kunci kembali pintu
-                    # GPIO.output(buka_pintu, 0)
+                    while GPIO.input(pin_status_pintu == 0):
+                        print "Mohon tutup pintu"
+                        time.sleep(1)
 
                 else:
                     print "ANDA TIDAK TERDAFTAR"
