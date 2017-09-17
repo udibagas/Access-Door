@@ -369,7 +369,7 @@ if __name__ == "__main__":
                         db_con.commit()
                         print "Data karyawan berhasil dihapus"
                         # hapus template sidik jari
-                        fp.delete(int(result[4]))
+                        fp.delete(int(result[3]))
 
                 # UNTUK MENJALANKAN PROGRAM GUI
                 elif cmd == "run":
