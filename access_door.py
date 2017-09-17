@@ -20,7 +20,7 @@ class Main(QtGui.QWidget, main_ui.Ui_Form):
         self.setupUi(self)
 
         self.update_clock()
-        self.update_info("TEMPELKAN JARI ANDA...")
+        self.update_info("TEMPELKAN JARI ANDA")
         self.showFullScreen()
 
         self.timer = QtCore.QTimer()
@@ -71,7 +71,7 @@ class ManualOpenThread(QtCore.QThread):
                     time.sleep(1)
 
                 GPIO.output(pin_buka_pintu, 0)
-                self.emit(QtCore.SIGNAL('updateInfo'), "TEMPELKAN JARI ANDA...")
+                self.emit(QtCore.SIGNAL('updateInfo'), "TEMPELKAN JARI ANDA")
 
 
 class ScanThread(QtCore.QThread):
@@ -91,7 +91,7 @@ class ScanThread(QtCore.QThread):
 
     def run(self):
         while not self.exiting:
-            self.emit(QtCore.SIGNAL('updateInfo'), "TEMPELKAN JARI ANDA...")
+            self.emit(QtCore.SIGNAL('updateInfo'), "TEMPELKAN JARI ANDA")
 
             while not fp.fp.readImage():
                 time.sleep(0.5)
