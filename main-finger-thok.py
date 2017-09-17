@@ -56,10 +56,11 @@ class ManualOpenThread(QtCore.QThread):
     def run(self):
         while not self.exiting:
             while GPIO.input(pin_buka_manual):
-                pass
+                time.sleep(1)
 
             if not GPIO.input(pin_status_pintu):
-                pass
+                time.sleep(1)
+
             else:
                 # TODO: pake timer kalau pintu kebukak terus
                 self.emit(QtCore.SIGNAL('updateInfo'), "SILAKAN MASUK")
@@ -85,19 +86,18 @@ class ScanThread(QtCore.QThread):
         return dt.seconds
 
     def run(self):
-        time.sleep(2)
         while not self.exiting:
             self.emit(QtCore.SIGNAL('updateInfo'), "TEMPELKAN JARI ANDA...")
 
             while not fp.fp.readImage():
-                time.sleep(1.5)
+                time.sleep(0.5)
 
             fp.fp.convertImage(0x01)
             result = fp.fp.searchTemplate()
             fp_id = result[0]
 
             if fp_id == -1:
-                self.emit(QtCore.SIGNAL('updateInfo'), "SIDIK JARI TIDAK DITEMUKAN!")
+                self.emit(QtCore.SIGNAL('updateInfo'), "SIDIK JARI TIDAK DITEMUKAN")
                 time.sleep(2)
                 continue
 
@@ -127,6 +127,7 @@ class ScanThread(QtCore.QThread):
                 time.sleep(2)
                 continue
 
+            # TODO: timer belum beres sepertinya
             start_time = datetime.now()
 
             # kunci kembali pintu
@@ -273,210 +274,211 @@ if __name__ == "__main__":
         ui = Main()
         sys.exit(app.exec_())
 
-    while True:
-        try:
-            cmd = raw_input("access_door> ")
+    else:
+        while True:
+            try:
+                cmd = raw_input("access_door> ")
 
-            # UNTUK MENDAFTARKAN KARYAWAN BARU
-            if cmd == "daftar":
-                nama = raw_input("NAMA \t\t: ")
-                jabatan = raw_input("JABATAN \t: ")
+                # UNTUK MENDAFTARKAN KARYAWAN BARU
+                if cmd == "daftar":
+                    nama = raw_input("NAMA \t\t: ")
+                    jabatan = raw_input("JABATAN \t: ")
 
-                if not nama or not jabatan:
-                    print "Nama dan jabatan harus diisi. Silakan ulangi kembali"
-                    continue
-
-                # enroll sidik jari
-                fp_id = fp.enroll()
-
-                # keluar loop kalau sudah pernah terdaftar
-                if fp_id < 0:
-                    continue
-
-                cur = db_con.cursor()
-                cur.execute("INSERT INTO `karyawan` (`nama`, `jabatan`, `fp_id`) VALUES (?, ?, ?)", (nama, jabatan, fp_id))
-                cur.close()
-                db_con.commit()
-
-                print "Pendaftaran BERHASIL!"
-
-            # UNTUK MELIHAT DAFTAR SEMUA KARYAWAN
-            elif cmd == "list":
-                cur = db_con.cursor()
-                cur.execute("SELECT * FROM `karyawan` ORDER BY `nama` ASC")
-                result = cur.fetchall()
-                cur.close()
-
-                data = [["ID", "NAMA", "JABATAN", "FINGERPRINT ID", "WAKTU DAFTAR"]]
-
-                for row, item in enumerate(result):
-                    data.append([str(item[0]), item[1], item[2], item[3], item[4]])
-
-                table = AsciiTable(data)
-                print table.table
-
-            # UNTUK MELIHAT LOG KARYAWAN MASUK
-            elif cmd == "log":
-                cur = db_con.cursor()
-                cur.execute("SELECT `log`.`waktu`, `karyawan`.`nama`, `karyawan`.`jabatan` FROM `log` LEFT JOIN `karyawan` ON `karyawan`.`id` = `log`.`karyawan_id` ORDER BY `log`.`waktu` ASC")
-                result = cur.fetchall()
-                cur.close()
-
-                data = [["WAKTU MASUK", "NAMA", "JABATAN"]]
-
-                for row, item in enumerate(result):
-                    data.append([str(item[0]), item[1], item[2]])
-
-                table = AsciiTable(data)
-                print table.table
-
-            elif cmd == "clear template":
-                fp.clear_template()
-
-            # UNTUK MENGHAPUS DATA KARYAWAN
-            elif cmd == "hapus":
-                id_karyawan = raw_input("Masukkan ID yang akan Anda hapus: ")
-
-                if not id_karyawan:
-                    continue
-
-                cur = db_con.cursor()
-                cur.execute("SELECT * FROM `karyawan` WHERE id = ?", (id_karyawan,))
-                result = cur.fetchone()
-                cur.close()
-
-                if not result:
-                    print "ID karyawan tidak ditemukan. Silakan ketik 'list' untuk menampilkan data semua karyawan."
-                    continue
-
-                data = [
-                    ["ID", "NAMA", "JABATAN", "CARD ID", "FINGERPRINT ID", "WAKTU DAFTAR"],
-                    [str(result[0]), result[1], result[2], result[3], result[4], result[5]]
-                ]
-
-                table = AsciiTable(data)
-                print table.table
-                confirm = raw_input("Anda yakin akan menghapus karyawan ini (y/n)?")
-
-                if confirm == "y" or confirm == "Y":
-                    cur = db_con.cursor()
-                    cur.execute("DELETE FROM `karyawan` WHERE id = ?", (id_karyawan,))
-                    cur.close()
-                    db_con.commit()
-                    print "Data karyawan berhasil dihapus"
-                    # hapus template sidik jari
-                    fp.delete(int(result[4]))
-
-            # UNTUK MENJALANKAN PROGRAM GUI
-            elif cmd == "run":
-                app = QtGui.QApplication(sys.argv)
-                ui = Main()
-                sys.exit(app.exec_())
-
-            # UNTUK KELUAR DARI PROGRAM
-            elif cmd == "exit" or cmd == "quit":
-                print "Bye"
-                exit(0)
-
-            elif cmd == "check memory fp":
-                fp.check_memory()
-
-            elif cmd == "door open":
-                if not GPIO.input(pin_status_pintu):
-                    print "Pintu sudah terbuka"
-                else:
-                    GPIO.output(pin_buka_pintu, 1)
-                    time.sleep(3)
-                    GPIO.output(pin_buka_pintu, 0)
-
-            elif cmd == "door status":
-                if GPIO.input(pin_status_pintu):
-                    print "Pintu tertutup"
-                else:
-                    print "Pintu terbuka"
-
-            elif cmd == "open manual":
-                if not GPIO.input(pin_status_pintu):
-                    print "Pintu sudah terbuka"
-
-                else:
-                    print "Tekan tombol"
-                    while GPIO.input(pin_buka_manual):
-                        pass
-                    GPIO.output(pin_buka_pintu, 1)
-                    time.sleep(3)
-                    GPIO.output(pin_buka_pintu, 0)
-
-
-            # UNTUK MENAMPILKAN DAFTAR PERINTAR
-            elif cmd == "help" or cmd == "?":
-                data = [
-                    ['PERINTAH', 'KETERANGAN'],
-                    ['?', 'Menampilkan pesan ini'],
-                    ['akses', 'Menjalankan program akses pintu CLI'],
-                    ['daftar', 'Mendaftarkan karyawan baru'],
-                    ['exit', 'Keluar dari progam ini'],
-                    ['hapus', 'Menghapus karyawan'],
-                    ['clear template', 'Menghapus semua template sidik jari'],
-                    ['check memory fp', 'Check memory sensor finger print'],
-                    ['door open', 'Buka pintu'],
-                    ['door status', 'Status pintu'],
-                    ['open manual', 'Test pintu pake switch'],
-                    ['list', 'Daftar semua karyawan'],
-                    ['log', 'Menampilkan log akses pintu'],
-                    ['run', 'Menjalankan program akses pintu desktop']
-                ]
-
-                table = AsciiTable(data)
-                print table.table
-
-            # PROGRAM AKSES PINTU (HARUS 2-2NYA)
-            elif cmd == "akses":
-                print "Tempelkan jari Anda..."
-                fp_id = fp.scan()
-
-                cur = db_con.cursor()
-                cur.execute("SELECT * FROM `karyawan` WHERE fp_id = ?", (fp_id,))
-                result = cur.fetchone()
-                cur.close()
-
-                if result:
-                    print "SELAMAT DATANG " + result[1] + ". SILAKAN MASUK."
-                    GPIO.output(pin_buka_pintu, 1)
-                    terlalu_lama = False
-                    start_time = datetime.now()
-
-                    while GPIO.input(pin_status_pintu == 1):
-                        if secs(start_time) > 3:
-                            terlalu_lama = True
-                            break
-
-                    if terlalu_lama:
-                        GPIO.output(pin_buka_pintu, 0)
-                        print "Anda terlalu lama. Pintu nutup lagi."
+                    if not nama or not jabatan:
+                        print "Nama dan jabatan harus diisi. Silakan ulangi kembali"
                         continue
 
-                    # kunci kembali pintu
-                    time.sleep(3)
-                    GPIO.output(buka_pintu, 0)
+                    # enroll sidik jari
+                    fp_id = fp.enroll()
+
+                    # keluar loop kalau sudah pernah terdaftar
+                    if fp_id < 0:
+                        continue
+
                     cur = db_con.cursor()
-                    cur.execute("INSERT INTO `log` (`karyawan_id`) VALUES (?)", (result[0],))
+                    cur.execute("INSERT INTO `karyawan` (`nama`, `jabatan`, `fp_id`) VALUES (?, ?, ?)", (nama, jabatan, fp_id))
                     cur.close()
                     db_con.commit()
 
-                    while GPIO.input(pin_status_pintu == 0):
-                        print "Mohon tutup pintu"
-                        time.sleep(1)
+                    print "Pendaftaran BERHASIL!"
+
+                # UNTUK MELIHAT DAFTAR SEMUA KARYAWAN
+                elif cmd == "list":
+                    cur = db_con.cursor()
+                    cur.execute("SELECT * FROM `karyawan` ORDER BY `nama` ASC")
+                    result = cur.fetchall()
+                    cur.close()
+
+                    data = [["ID", "NAMA", "JABATAN", "FINGERPRINT ID", "WAKTU DAFTAR"]]
+
+                    for row, item in enumerate(result):
+                        data.append([str(item[0]), item[1], item[2], item[3], item[4]])
+
+                    table = AsciiTable(data)
+                    print table.table
+
+                # UNTUK MELIHAT LOG KARYAWAN MASUK
+                elif cmd == "log":
+                    cur = db_con.cursor()
+                    cur.execute("SELECT `log`.`waktu`, `karyawan`.`nama`, `karyawan`.`jabatan` FROM `log` LEFT JOIN `karyawan` ON `karyawan`.`id` = `log`.`karyawan_id` ORDER BY `log`.`waktu` ASC")
+                    result = cur.fetchall()
+                    cur.close()
+
+                    data = [["WAKTU MASUK", "NAMA", "JABATAN"]]
+
+                    for row, item in enumerate(result):
+                        data.append([str(item[0]), item[1], item[2]])
+
+                    table = AsciiTable(data)
+                    print table.table
+
+                elif cmd == "clear template":
+                    fp.clear_template()
+
+                # UNTUK MENGHAPUS DATA KARYAWAN
+                elif cmd == "hapus":
+                    id_karyawan = raw_input("Masukkan ID yang akan Anda hapus: ")
+
+                    if not id_karyawan:
+                        continue
+
+                    cur = db_con.cursor()
+                    cur.execute("SELECT * FROM `karyawan` WHERE id = ?", (id_karyawan,))
+                    result = cur.fetchone()
+                    cur.close()
+
+                    if not result:
+                        print "ID karyawan tidak ditemukan. Silakan ketik 'list' untuk menampilkan data semua karyawan."
+                        continue
+
+                    data = [
+                        ["ID", "NAMA", "JABATAN", "CARD ID", "FINGERPRINT ID", "WAKTU DAFTAR"],
+                        [str(result[0]), result[1], result[2], result[3], result[4], result[5]]
+                    ]
+
+                    table = AsciiTable(data)
+                    print table.table
+                    confirm = raw_input("Anda yakin akan menghapus karyawan ini (y/n)?")
+
+                    if confirm == "y" or confirm == "Y":
+                        cur = db_con.cursor()
+                        cur.execute("DELETE FROM `karyawan` WHERE id = ?", (id_karyawan,))
+                        cur.close()
+                        db_con.commit()
+                        print "Data karyawan berhasil dihapus"
+                        # hapus template sidik jari
+                        fp.delete(int(result[4]))
+
+                # UNTUK MENJALANKAN PROGRAM GUI
+                elif cmd == "run":
+                    app = QtGui.QApplication(sys.argv)
+                    ui = Main()
+                    sys.exit(app.exec_())
+
+                # UNTUK KELUAR DARI PROGRAM
+                elif cmd == "exit" or cmd == "quit":
+                    print "Bye"
+                    exit(0)
+
+                elif cmd == "check memory fp":
+                    fp.check_memory()
+
+                elif cmd == "door open":
+                    if not GPIO.input(pin_status_pintu):
+                        print "Pintu sudah terbuka"
+                    else:
+                        GPIO.output(pin_buka_pintu, 1)
+                        time.sleep(3)
+                        GPIO.output(pin_buka_pintu, 0)
+
+                elif cmd == "door status":
+                    if GPIO.input(pin_status_pintu):
+                        print "Pintu tertutup"
+                    else:
+                        print "Pintu terbuka"
+
+                elif cmd == "open manual":
+                    if not GPIO.input(pin_status_pintu):
+                        print "Pintu sudah terbuka"
+
+                    else:
+                        print "Tekan tombol"
+                        while GPIO.input(pin_buka_manual):
+                            pass
+                        GPIO.output(pin_buka_pintu, 1)
+                        time.sleep(3)
+                        GPIO.output(pin_buka_pintu, 0)
+
+
+                # UNTUK MENAMPILKAN DAFTAR PERINTAR
+                elif cmd == "help" or cmd == "?":
+                    data = [
+                        ['PERINTAH', 'KETERANGAN'],
+                        ['?', 'Menampilkan pesan ini'],
+                        ['akses', 'Menjalankan program akses pintu CLI'],
+                        ['daftar', 'Mendaftarkan karyawan baru'],
+                        ['exit', 'Keluar dari progam ini'],
+                        ['hapus', 'Menghapus karyawan'],
+                        ['clear template', 'Menghapus semua template sidik jari'],
+                        ['check memory fp', 'Check memory sensor finger print'],
+                        ['door open', 'Buka pintu'],
+                        ['door status', 'Status pintu'],
+                        ['open manual', 'Test pintu pake switch'],
+                        ['list', 'Daftar semua karyawan'],
+                        ['log', 'Menampilkan log akses pintu'],
+                        ['run', 'Menjalankan program akses pintu desktop']
+                    ]
+
+                    table = AsciiTable(data)
+                    print table.table
+
+                # PROGRAM AKSES PINTU (HARUS 2-2NYA)
+                elif cmd == "akses":
+                    print "Tempelkan jari Anda..."
+                    fp_id = fp.scan()
+
+                    cur = db_con.cursor()
+                    cur.execute("SELECT * FROM `karyawan` WHERE fp_id = ?", (fp_id,))
+                    result = cur.fetchone()
+                    cur.close()
+
+                    if result:
+                        print "SELAMAT DATANG " + result[1] + ". SILAKAN MASUK."
+                        GPIO.output(pin_buka_pintu, 1)
+                        terlalu_lama = False
+                        start_time = datetime.now()
+
+                        while GPIO.input(pin_status_pintu == 1):
+                            if secs(start_time) > 3:
+                                terlalu_lama = True
+                                break
+
+                        if terlalu_lama:
+                            GPIO.output(pin_buka_pintu, 0)
+                            print "Anda terlalu lama. Pintu nutup lagi."
+                            continue
+
+                        # kunci kembali pintu
+                        time.sleep(3)
+                        GPIO.output(buka_pintu, 0)
+                        cur = db_con.cursor()
+                        cur.execute("INSERT INTO `log` (`karyawan_id`) VALUES (?)", (result[0],))
+                        cur.close()
+                        db_con.commit()
+
+                        while GPIO.input(pin_status_pintu == 0):
+                            print "Mohon tutup pintu"
+                            time.sleep(1)
+
+                    else:
+                        print "ANDA TIDAK TERDAFTAR"
+
+                elif cmd.strip():
+                    print "Perintah tidak dikenal. Ketik '?' untuk bantuan."
 
                 else:
-                    print "ANDA TIDAK TERDAFTAR"
+                    pass
 
-            elif cmd.strip():
-                print "Perintah tidak dikenal. Ketik '?' untuk bantuan."
-
-            else:
-                pass
-
-        except KeyboardInterrupt:
-            print("Bye");
-            exit(0)
+            except KeyboardInterrupt:
+                print("Bye");
+                exit(0)
