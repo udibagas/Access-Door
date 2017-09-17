@@ -56,10 +56,10 @@ class ManualOpenThread(QtCore.QThread):
     def run(self):
         while not self.exiting:
             while GPIO.input(pin_buka_manual):
-                time.sleep(1)
+                time.sleep(0.5)
 
             if not GPIO.input(pin_status_pintu):
-                time.sleep(1)
+                time.sleep(0.5)
 
             else:
                 # TODO: pake timer kalau pintu kebukak terus
@@ -198,7 +198,7 @@ class FP():
         print('Tempelkan jari Anda...')
 
         while not self.fp.readImage():
-            pass
+            time.sleep(0.5)
 
         self.fp.convertImage(0x01)
         result = self.fp.searchTemplate()
@@ -214,7 +214,7 @@ class FP():
 
             print('Tempelkan jari yang sama...')
             while not self.fp.readImage():
-                pass
+                time.sleep(0.5)
 
             self.fp.convertImage(0x02)
 
