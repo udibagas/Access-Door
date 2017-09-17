@@ -2,6 +2,7 @@
 
 from PyQt4 import QtCore, QtGui
 import binascii
+import PN532
 import sqlite3
 import time
 from datetime import datetime
@@ -89,6 +90,21 @@ class ScanThread(QtCore.QThread):
         dt = datetime.now() - start_time
         return dt.seconds
 
+    def read_card(self):
+        start_time = datetime.now()
+
+        while not self.exiting:
+            if self.secs(start_time) > 10:
+                self.emit(QtCore.SIGNAL('updateInfo'), "WAKTU HABIS")
+                time.sleep(2)
+                return False
+
+            uid = nfc.pn532.read_passive_target()
+            if uid is "no_card":
+                continue
+
+            return str(binascii.hexlify(uid))
+
     def run(self):
         time.sleep(3)
         while not self.exiting:
@@ -106,13 +122,19 @@ class ScanThread(QtCore.QThread):
                 time.sleep(2)
                 continue
 
+            self.emit(QtCore.SIGNAL('updateInfo'), "TEMPELKAN KARTU...")
+            card_id = self.read_card()
+
+            if not card_id:
+                continue
+
             cur = db_con.cursor()
-            cur.execute("SELECT * FROM karyawan WHERE `fp_id` = ?", (fp_id,))
+            cur.execute("SELECT * FROM karyawan WHERE `fp_id` = ? AND `card_id` = ?", (fp_id, card_id))
             result = cur.fetchone()
             cur.close()
 
             if not result:
-                self.emit(QtCore.SIGNAL('updateInfo'), "SIDIK JARI TIDAK TERDAFTAR")
+                self.emit(QtCore.SIGNAL('updateInfo'), "SIDIK JARI DAN KARTU TIDAK COCOK")
                 time.sleep(2)
                 continue
 
@@ -235,6 +257,23 @@ class FP():
                 # untuk disimpan di database
                 return fp_id
 
+class NFC():
+    def __init__(self, device):
+        self.device = device
+        self.pn532 = PN532.PN532(self.device, 115200)
+        self.pn532.begin()
+        self.pn532.SAM_configuration()
+        # Get the firmware version from the chip and print(it out.)
+        ic, ver, rev, support = self.pn532.get_firmware_version()
+
+    def scan(self):
+        while True:
+            uid = self.pn532.read_passive_target()
+            if uid is "no_card":
+                continue
+
+            return str(binascii.hexlify(uid))
+
 def secs(start_time):
     dt = datetime.now() - start_time
     return dt.seconds
@@ -242,7 +281,7 @@ def secs(start_time):
 
 if __name__ == "__main__":
     # db_con = MySQLdb.connect(host="localhost", user="root", passwd="bismillah", db="access_door")
-    db_con = sqlite3.connect("access_door.db", check_same_thread = False)
+    db_con = sqlite3.connect("access_door1.db", check_same_thread = False)
 
     # populate db
     db_con.execute("CREATE TABLE IF NOT EXISTS `karyawan` ( \
@@ -250,6 +289,7 @@ if __name__ == "__main__":
         `nama` varchar(30) NOT NULL, \
         `jabatan` varchar(30) NOT NULL, \
         `fp_id` varchar(20) NOT NULL, \
+        `card_id` varchar(20) NOT NULL, \
         `waktu_daftar` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP)");
 
     db_con.execute("CREATE TABLE IF NOT EXISTS `log` ( \
@@ -258,6 +298,7 @@ if __name__ == "__main__":
         `waktu` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP)")
 
     fp = FP("/dev/serial1")
+    nfc = NFC("/dev/serial2")
 
     # PIN pada raspberry
     pin_buka_pintu = 36  # untuk trigger buka pintu
@@ -297,8 +338,24 @@ if __name__ == "__main__":
                     if fp_id < 0:
                         continue
 
+                    # scan kartu
+                    print "Tempelkan kartu..."
+                    card_id = nfc.scan()
+
+                    # cek apakah kartu sudah pernah terdaftar
                     cur = db_con.cursor()
-                    cur.execute("INSERT INTO `karyawan` (`nama`, `jabatan`, `fp_id`) VALUES (?, ?, ?)", (nama, jabatan, fp_id))
+                    cur.execute("SELECT * FROM `karyawan` WHERE card_id = ?", (card_id,))
+                    result = cur.fetchone()
+                    cur.close()
+
+                    if result:
+                        print "Kartu sudah terdaftar atas nama " + result[1]
+                        # hapus template yang sudah tersimpan
+                        fp.delete(fp_id)
+                        continue
+
+                    cur = db_con.cursor()
+                    cur.execute("INSERT INTO `karyawan` (`nama`, `jabatan`, `fp_id`, `card_id`) VALUES (?, ?, ?, ?)", (nama, jabatan, fp_id, card_id))
                     cur.close()
                     db_con.commit()
 
@@ -311,10 +368,10 @@ if __name__ == "__main__":
                     result = cur.fetchall()
                     cur.close()
 
-                    data = [["ID", "NAMA", "JABATAN", "FINGERPRINT ID", "WAKTU DAFTAR"]]
+                    data = [["ID", "NAMA", "JABATAN", "FINGERPRINT ID", "CARD ID", "WAKTU DAFTAR"]]
 
                     for row, item in enumerate(result):
-                        data.append([str(item[0]), item[1], item[2], item[3], item[4]])
+                        data.append([str(item[0]), item[1], item[2], item[3], item[4], item[5]])
 
                     table = AsciiTable(data)
                     print table.table
@@ -354,8 +411,8 @@ if __name__ == "__main__":
                         continue
 
                     data = [
-                        ["ID", "NAMA", "JABATAN", "FINGERPRINT ID", "WAKTU DAFTAR"],
-                        [str(result[0]), result[1], result[2], result[3], result[4]]
+                        ["ID", "NAMA", "JABATAN", "FINGERPRINT ID", "CARD ID", "WAKTU DAFTAR"],
+                        [str(result[0]), result[1], result[2], result[3], result[4], result[5]]
                     ]
 
                     table = AsciiTable(data)
@@ -438,9 +495,11 @@ if __name__ == "__main__":
                 elif cmd == "akses":
                     print "Tempelkan jari Anda..."
                     fp_id = fp.scan()
+                    print "Tempelkan kartu Anda..."
+                    card_id = nfc.scan()
 
                     cur = db_con.cursor()
-                    cur.execute("SELECT * FROM `karyawan` WHERE fp_id = ?", (fp_id,))
+                    cur.execute("SELECT * FROM `karyawan` WHERE fp_id = ? AND card_id = ?", (fp_id, card_id))
                     result = cur.fetchone()
                     cur.close()
 
