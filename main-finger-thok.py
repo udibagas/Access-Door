@@ -62,10 +62,14 @@ class ManualOpenThread(QtCore.QThread):
                 time.sleep(0.5)
 
             else:
-                # TODO: pake timer kalau pintu kebukak terus
                 self.emit(QtCore.SIGNAL('updateInfo'), "SILAKAN MASUK")
                 GPIO.output(pin_buka_pintu, 1)
                 time.sleep(3)
+
+                while not GPIO.input(pin_status_pintu):
+                    self.emit(QtCore.SIGNAL('updateInfo'), "MOHON TUTUP PINTU")
+                    time.sleep(1)
+
                 GPIO.output(pin_buka_pintu, 0)
                 self.emit(QtCore.SIGNAL('updateInfo'), "TEMPELKAN JARI ANDA...")
 
@@ -127,12 +131,7 @@ class ScanThread(QtCore.QThread):
                 time.sleep(2)
                 continue
 
-            # TODO: timer belum beres sepertinya
-            start_time = datetime.now()
-
-            # kunci kembali pintu
             time.sleep(3)
-            GPIO.output(buka_pintu, 0)
             cur = db_con.cursor()
             cur.execute("INSERT INTO `log` (`karyawan_id`) VALUES (?)", (result[0],))
             cur.close()
@@ -141,6 +140,8 @@ class ScanThread(QtCore.QThread):
             while not GPIO.input(pin_status_pintu):
                 self.emit(QtCore.SIGNAL('updateInfo'), "MOHON TUTUP PINTU")
                 time.sleep(1)
+
+            GPIO.output(pin_buka_pintu, 0)
 
 class FP():
     def __init__(self, device):
@@ -460,7 +461,7 @@ if __name__ == "__main__":
 
                         # kunci kembali pintu
                         time.sleep(3)
-                        GPIO.output(buka_pintu, 0)
+                        GPIO.output(pin_buka_pintu, 0)
                         cur = db_con.cursor()
                         cur.execute("INSERT INTO `log` (`karyawan_id`) VALUES (?)", (result[0],))
                         cur.close()
