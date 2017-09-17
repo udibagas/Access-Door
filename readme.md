@@ -89,7 +89,7 @@ $ sudo reboot
 ## Package Dependency
 
 ```
-sudo apt install python-pysqlite2 python-texttable python-qt4
+$ sudo apt install python-pysqlite2 python-texttable python-qt4
 ```
 
 Install pyfingerprint. Refer to below link.
