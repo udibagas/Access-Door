@@ -7,7 +7,7 @@ import time
 from datetime import datetime
 from pyfingerprint.pyfingerprint import PyFingerprint
 from terminaltables import AsciiTable
-# from RPi import GPIO
+from RPi import GPIO
 import main_ui
 import sys
 import subprocess
@@ -27,18 +27,13 @@ class Main(QtGui.QWidget, main_ui.Ui_Form):
         self.timer.timeout.connect(self.update_clock)
         self.timer.start(1000)
 
+        self.manual_open_thread = ManualOpenThread()
+        self.connect(self.manual_open_thread, QtCore.SIGNAL('updateInfo'), self.update_info)
+        self.manual_open_thread.start()
+
         self.scan_thread = ScanThread()
         self.connect(self.scan_thread, QtCore.SIGNAL('updateInfo'), self.update_info)
         self.scan_thread.start()
-
-        self.manual_open_thread = ManualOpenThread()
-        self.connect(self.manual_open_thread, QtCore.SIGNAL('open_door'), self.open_door)
-        self.manual_open_thread.start()
-
-    def open_door(self):
-        GPIO.output(pin_buka_pintu, 1)
-        time.sleep(3)
-        GPIO.output(pin_buka_pintu, 0)
 
     def update_info(self, info):
         self.info.setText(info)
@@ -60,10 +55,18 @@ class ManualOpenThread(QtCore.QThread):
 
     def run(self):
         while not self.exiting:
-            while GPIO.input(pin_buka_manual) or pin_status_pintu:
+            while GPIO.input(pin_buka_manual):
                 pass
 
-            self.emit(QtCore.SIGNAL('open_door'))
+            if not GPIO.input(pin_status_pintu):
+                pass
+            else:
+                # TODO: pake timer kalau pintu kebukak terus
+                self.emit(QtCore.SIGNAL('updateInfo'), "SILAKAN MASUK")
+                GPIO.output(pin_buka_pintu, 1)
+                time.sleep(3)
+                GPIO.output(pin_buka_pintu, 0)
+                self.emit(QtCore.SIGNAL('updateInfo'), "TEMPELKAN JARI ANDA...")
 
 
 class ScanThread(QtCore.QThread):
@@ -87,7 +90,7 @@ class ScanThread(QtCore.QThread):
             self.emit(QtCore.SIGNAL('updateInfo'), "TEMPELKAN JARI ANDA...")
 
             while not fp.fp.readImage():
-                pass
+                time.sleep(1.5)
 
             fp.fp.convertImage(0x01)
             result = fp.fp.searchTemplate()
@@ -113,7 +116,7 @@ class ScanThread(QtCore.QThread):
             terlalu_lama = False
             start_time = datetime.now()
 
-            while GPIO.input(pin_status_pintu == 1):
+            while GPIO.input(pin_status_pintu):
                 if secs(start_time) > 3:
                     terlalu_lama = True
                     break
@@ -121,7 +124,10 @@ class ScanThread(QtCore.QThread):
             if terlalu_lama:
                 GPIO.output(pin_buka_pintu, 0)
                 self.emit(QtCore.SIGNAL('updateInfo'), "WAKTU HABIS")
+                time.sleep(2)
                 continue
+
+            start_time = datetime.now()
 
             # kunci kembali pintu
             time.sleep(3)
@@ -131,7 +137,7 @@ class ScanThread(QtCore.QThread):
             cur.close()
             db_con.commit()
 
-            while GPIO.input(pin_status_pintu == 0):
+            while not GPIO.input(pin_status_pintu):
                 self.emit(QtCore.SIGNAL('updateInfo'), "MOHON TUTUP PINTU")
                 time.sleep(1)
 
@@ -153,7 +159,7 @@ class FP():
 
     def scan(self):
         while not self.fp.readImage():
-            pass
+            time.sleep(1)
 
         self.fp.convertImage(0x01)
         result = self.fp.searchTemplate()
@@ -375,6 +381,33 @@ if __name__ == "__main__":
             elif cmd == "check memory fp":
                 fp.check_memory()
 
+            elif cmd == "door open":
+                if not GPIO.input(pin_status_pintu):
+                    print "Pintu sudah terbuka"
+                else:
+                    GPIO.output(pin_buka_pintu, 1)
+                    time.sleep(3)
+                    GPIO.output(pin_buka_pintu, 0)
+
+            elif cmd == "door status":
+                if GPIO.input(pin_status_pintu):
+                    print "Pintu tertutup"
+                else:
+                    print "Pintu terbuka"
+
+            elif cmd == "open manual":
+                if not GPIO.input(pin_status_pintu):
+                    print "Pintu sudah terbuka"
+
+                else:
+                    print "Tekan tombol"
+                    while GPIO.input(pin_buka_manual):
+                        pass
+                    GPIO.output(pin_buka_pintu, 1)
+                    time.sleep(3)
+                    GPIO.output(pin_buka_pintu, 0)
+
+
             # UNTUK MENAMPILKAN DAFTAR PERINTAR
             elif cmd == "help" or cmd == "?":
                 data = [
@@ -386,6 +419,9 @@ if __name__ == "__main__":
                     ['hapus', 'Menghapus karyawan'],
                     ['clear template', 'Menghapus semua template sidik jari'],
                     ['check memory fp', 'Check memory sensor finger print'],
+                    ['door open', 'Buka pintu'],
+                    ['door status', 'Status pintu'],
+                    ['open manual', 'Test pintu pake switch'],
                     ['list', 'Daftar semua karyawan'],
                     ['log', 'Menampilkan log akses pintu'],
                     ['run', 'Menjalankan program akses pintu desktop']
