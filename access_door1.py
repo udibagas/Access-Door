@@ -372,7 +372,7 @@ if __name__ == "__main__":
                     print table.table
 
                 elif cmd == "clear database":
-                    confirm = raw_input("Anda yakin (y/N)?")
+                    confirm = raw_input("Anda yakin (y/N)? ")
                     if confirm == "y":
                         cur = db_con.cursor()
                         cur.execute("DELETE FROM `karyawan`")
@@ -382,7 +382,7 @@ if __name__ == "__main__":
                         fp.clear_database()
 
                 elif cmd == "clear log":
-                    confirm = raw_input("Anda yakin (y/N)?")
+                    confirm = raw_input("Anda yakin (y/N)? ")
                     if confirm == "y":
                         cur = db_con.cursor()
                         cur.execute("DELETE FROM `log`")
@@ -505,7 +505,7 @@ if __name__ == "__main__":
                         terlalu_lama = False
                         start_time = datetime.now()
 
-                        while GPIO.input(pin_status_pintu == 1):
+                        while GPIO.input(pin_status_pintu):
                             if secs(start_time) > 3:
                                 terlalu_lama = True
                                 break
@@ -523,7 +523,7 @@ if __name__ == "__main__":
                         cur.close()
                         db_con.commit()
 
-                        while GPIO.input(pin_status_pintu == 0):
+                        while not GPIO.input(pin_status_pintu):
                             print "Mohon tutup pintu"
                             time.sleep(1)
 
