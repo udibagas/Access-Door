@@ -344,7 +344,7 @@ if __name__ == "__main__":
                 # UNTUK MELIHAT DAFTAR SEMUA KARYAWAN
                 elif cmd == "list":
                     cur = db_con.cursor()
-                    cur.execute("SELECT * FROM `karyawan` ORDER BY `nama` ASC")
+                    cur.execute("SELECT `id`, `nama`, `jabatan`, `fp_id`, `card_id`, datetime(`waktu_daftar`, 'localtime') FROM `karyawan` ORDER BY `nama` ASC")
                     result = cur.fetchall()
                     cur.close()
 
@@ -359,7 +359,7 @@ if __name__ == "__main__":
                 # UNTUK MELIHAT LOG KARYAWAN MASUK
                 elif cmd == "log":
                     cur = db_con.cursor()
-                    cur.execute("SELECT `log`.`waktu`, `karyawan`.`nama`, `karyawan`.`jabatan` FROM `log` LEFT JOIN `karyawan` ON `karyawan`.`id` = `log`.`karyawan_id` ORDER BY `log`.`waktu` ASC")
+                    cur.execute("SELECT datetime(`log`.`waktu`, 'localtime'), `karyawan`.`nama`, `karyawan`.`jabatan` FROM `log` LEFT JOIN `karyawan` ON `karyawan`.`id` = `log`.`karyawan_id` ORDER BY `log`.`waktu` ASC")
                     result = cur.fetchall()
                     cur.close()
 
@@ -372,18 +372,22 @@ if __name__ == "__main__":
                     print table.table
 
                 elif cmd == "clear database":
-                    cur = db_con.cursor()
-                    cur.execute("DELETE FROM `karyawan`")
-                    cur.execute("DELETE FROM `log`")
-                    cur.close()
-                    db_con.commit()
-                    fp.clear_database()
+                    confirm = raw_input("Anda yakin (y/N)?")
+                    if confirm == "y":
+                        cur = db_con.cursor()
+                        cur.execute("DELETE FROM `karyawan`")
+                        cur.execute("DELETE FROM `log`")
+                        cur.close()
+                        db_con.commit()
+                        fp.clear_database()
 
                 elif cmd == "clear log":
-                    cur = db_con.cursor()
-                    cur.execute("DELETE FROM `log`")
-                    cur.close()
-                    db_con.commit()
+                    confirm = raw_input("Anda yakin (y/N)?")
+                    if confirm == "y":
+                        cur = db_con.cursor()
+                        cur.execute("DELETE FROM `log`")
+                        cur.close()
+                        db_con.commit()
 
                 # UNTUK MENGHAPUS DATA KARYAWAN
                 elif cmd == "hapus":
