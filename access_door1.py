@@ -28,10 +28,6 @@ class Main(QtGui.QWidget, main_ui.Ui_Form):
         self.timer.timeout.connect(self.update_clock)
         self.timer.start(1000)
 
-        self.manual_open_thread = ManualOpenThread()
-        self.connect(self.manual_open_thread, QtCore.SIGNAL('updateInfo'), self.update_info)
-        self.manual_open_thread.start()
-
         self.scan_thread = ScanThread()
         self.connect(self.scan_thread, QtCore.SIGNAL('updateInfo'), self.update_info)
         self.scan_thread.start()
@@ -43,37 +39,6 @@ class Main(QtGui.QWidget, main_ui.Ui_Form):
         self.tanggal.setText(time.strftime("%d %b %Y"))
         self.jam.setText(time.strftime("%H:%M:%S"))
 
-class ManualOpenThread(QtCore.QThread):
-    def __init__(self):
-        super(self.__class__, self).__init__()
-        self.exiting = False
-        global pin_buka_manual
-        global pin_status_pintu
-
-    def __del__(self):
-        self.exiting = True
-        self.wait()
-
-    def run(self):
-        while not self.exiting:
-            while GPIO.input(pin_buka_manual):
-                time.sleep(0.5)
-
-            if not GPIO.input(pin_status_pintu):
-                time.sleep(0.5)
-
-            else:
-                self.emit(QtCore.SIGNAL('updateInfo'), "SILAKAN MASUK")
-                GPIO.output(pin_buka_pintu, 1)
-                time.sleep(3)
-
-                while not GPIO.input(pin_status_pintu):
-                    self.emit(QtCore.SIGNAL('updateInfo'), "MOHON TUTUP PINTU")
-                    time.sleep(1)
-
-                GPIO.output(pin_buka_pintu, 0)
-                self.emit(QtCore.SIGNAL('updateInfo'), "TEMPELKAN JARI ANDA")
-
 
 class ScanThread(QtCore.QThread):
     def __init__(self):
@@ -81,6 +46,9 @@ class ScanThread(QtCore.QThread):
         self.exiting = False
         global db_con
         global fp
+        global pin_buka_manual
+        global pin_status_pintu
+        global pin_buka_pintu
 
     def __del__(self):
         self.exiting = True
@@ -107,11 +75,25 @@ class ScanThread(QtCore.QThread):
 
     def run(self):
         time.sleep(3)
+
         while not self.exiting:
             self.emit(QtCore.SIGNAL('updateInfo'), "TEMPELKAN JARI ANDA")
 
             while not fp.fp.readImage():
-                time.sleep(0.5)
+                if GPIO.input(pin_status_pintu) and not GPIO.input(pin_buka_manual):
+                    self.emit(QtCore.SIGNAL('updateInfo'), "SILAKAN MASUK")
+                    GPIO.output(pin_buka_pintu, 1)
+                    time.sleep(3)
+
+                    while not GPIO.input(pin_status_pintu):
+                        self.emit(QtCore.SIGNAL('updateInfo'), "MOHON TUTUP PINTU")
+                        time.sleep(1)
+
+                    GPIO.output(pin_buka_pintu, 0)
+                    self.emit(QtCore.SIGNAL('updateInfo'), "TEMPELKAN JARI ANDA")
+
+                else:
+                    time.sleep(0.5)
 
             fp.fp.convertImage(0x01)
             result = fp.fp.searchTemplate()
@@ -122,7 +104,7 @@ class ScanThread(QtCore.QThread):
                 time.sleep(2)
                 continue
 
-            self.emit(QtCore.SIGNAL('updateInfo'), "TEMPELKAN KARTU...")
+            self.emit(QtCore.SIGNAL('updateInfo'), "TEMPELKAN KARTU")
             card_id = self.read_card()
 
             if not card_id:
@@ -207,10 +189,8 @@ class FP():
             print "Template sidik jari #" + position + " gagal dihapus"
             return False
 
-    def clear_template(self):
-        for i in range(0,999):
-            print "Menghapus template #" + str(i)
-            self.fp.deleteTemplate(i)
+    def clear_database(self):
+        self.fp.clearDatabase();
 
     def check_memory(self):
         print('Template terpakai saat ini: ' + str(self.fp.getTemplateCount()) + '/' + str(self.fp.getStorageCapacity()))
@@ -391,8 +371,19 @@ if __name__ == "__main__":
                     table = AsciiTable(data)
                     print table.table
 
-                elif cmd == "clear template":
-                    fp.clear_template()
+                elif cmd == "clear database":
+                    cur = db_con.cursor()
+                    cur.execute("DELETE FROM `karyawan`")
+                    cur.execute("DELETE FROM `log`")
+                    cur.close()
+                    db_con.commit()
+                    fp.clear_database()
+
+                elif cmd == "clear log":
+                    cur = db_con.cursor()
+                    cur.execute("DELETE FROM `log`")
+                    cur.close()
+                    db_con.commit()
 
                 # UNTUK MENGHAPUS DATA KARYAWAN
                 elif cmd == "hapus":
@@ -478,7 +469,8 @@ if __name__ == "__main__":
                         ['daftar', 'Mendaftarkan karyawan baru'],
                         ['exit', 'Keluar dari progam ini'],
                         ['hapus', 'Menghapus karyawan'],
-                        ['clear template', 'Menghapus semua template sidik jari'],
+                        ['clear database', 'Menghapus data karyawan dan log'],
+                        ['clear log', 'Menghapus log'],
                         ['check memory fp', 'Check memory sensor finger print'],
                         ['door open', 'Buka pintu'],
                         ['door status', 'Status pintu'],
