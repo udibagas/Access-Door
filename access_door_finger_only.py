@@ -2,7 +2,6 @@
 
 from PyQt4 import QtCore, QtGui
 import binascii
-import PN532
 import sqlite3
 import time
 from datetime import datetime
@@ -28,6 +27,10 @@ class Main(QtGui.QWidget, main_ui.Ui_Form):
         self.timer.timeout.connect(self.update_clock)
         self.timer.start(1000)
 
+        self.manual_open_thread = ManualOpenThread()
+        self.connect(self.manual_open_thread, QtCore.SIGNAL('updateInfo'), self.update_info)
+        self.manual_open_thread.start()
+
         self.scan_thread = ScanThread()
         self.connect(self.scan_thread, QtCore.SIGNAL('updateInfo'), self.update_info)
         self.scan_thread.start()
@@ -39,6 +42,37 @@ class Main(QtGui.QWidget, main_ui.Ui_Form):
         self.tanggal.setText(time.strftime("%d %b %Y"))
         self.jam.setText(time.strftime("%H:%M:%S"))
 
+class ManualOpenThread(QtCore.QThread):
+    def __init__(self):
+        super(self.__class__, self).__init__()
+        self.exiting = False
+        global pin_buka_manual
+        global pin_status_pintu
+
+    def __del__(self):
+        self.exiting = True
+        self.wait()
+
+    def run(self):
+        while not self.exiting:
+            while GPIO.input(pin_buka_manual):
+                time.sleep(0.5)
+
+            if not GPIO.input(pin_status_pintu):
+                time.sleep(0.5)
+
+            else:
+                self.emit(QtCore.SIGNAL('updateInfo'), "SILAKAN MASUK")
+                GPIO.output(pin_buka_pintu, 1)
+                time.sleep(3)
+
+                while not GPIO.input(pin_status_pintu):
+                    self.emit(QtCore.SIGNAL('updateInfo'), "MOHON TUTUP PINTU")
+                    time.sleep(1)
+
+                GPIO.output(pin_buka_pintu, 0)
+                self.emit(QtCore.SIGNAL('updateInfo'), "TEMPELKAN JARI ANDA")
+
 
 class ScanThread(QtCore.QThread):
     def __init__(self):
@@ -46,9 +80,6 @@ class ScanThread(QtCore.QThread):
         self.exiting = False
         global db_con
         global fp
-        global pin_buka_manual
-        global pin_status_pintu
-        global pin_buka_pintu
 
     def __del__(self):
         self.exiting = True
@@ -58,54 +89,13 @@ class ScanThread(QtCore.QThread):
         dt = datetime.now() - start_time
         return dt.seconds
 
-    def read_card(self):
-        start_time = datetime.now()
-
-        while not self.exiting:
-            if self.secs(start_time) > 10:
-                self.emit(QtCore.SIGNAL('updateInfo'), "WAKTU HABIS")
-                time.sleep(2)
-                return False
-
-            uid = nfc.pn532.read_passive_target()
-            if uid is "no_card":
-                continue
-
-            return str(binascii.hexlify(uid))
-
-    def buka_manual(self):
-        self.emit(QtCore.SIGNAL('updateInfo'), "SILAKAN MASUK")
-        GPIO.output(pin_buka_pintu, 1)
-        time.sleep(3)
-
-        while not GPIO.input(pin_status_pintu):
-            self.emit(QtCore.SIGNAL('updateInfo'), "MOHON TUTUP PINTU")
-            time.sleep(1)
-
-        GPIO.output(pin_buka_pintu, 0)
-        self.emit(QtCore.SIGNAL('updateInfo'), "TEMPELKAN JARI ANDA")
-
-    def read_image(self):
-        while not fp.fp.readImage():
-            # jika pintu tertutup dan ada yang neken saklar buka manual
-            if GPIO.input(pin_status_pintu) and not GPIO.input(pin_buka_manual):
-                self.buka_manual()
-
-            else:
-                time.sleep(0.5)
-
     def run(self):
-        self.emit(QtCore.SIGNAL('updateInfo'), "MOHON TUNGGU...")
         time.sleep(3)
         while not self.exiting:
             self.emit(QtCore.SIGNAL('updateInfo'), "TEMPELKAN JARI ANDA")
 
-            try:
-                self.read_image()
-            except Exception as e:
-                self.emit(QtCore.SIGNAL('updateInfo'), "GAGAL MEMBACA SIDIK JARI")
-                time.sleep(2)
-                continue
+            while not fp.fp.readImage():
+                time.sleep(0.5)
 
             fp.fp.convertImage(0x01)
             result = fp.fp.searchTemplate()
@@ -116,34 +106,13 @@ class ScanThread(QtCore.QThread):
                 time.sleep(2)
                 continue
 
-            self.emit(QtCore.SIGNAL('updateInfo'), "TEMPELKAN KARTU")
-
-            if use_nfc:
-                try:
-                    card_id = self.read_card()
-                except Exception as e:
-                    self.emit(QtCore.SIGNAL('updateInfo'), "GAGAL MEMBACA KARTU")
-                    time.sleep(2)
-                    continue
-
-                if not card_id:
-                    continue
-
             cur = db_con.cursor()
-
-            if use_nfc:
-                cur.execute("SELECT * FROM karyawan WHERE `fp_id` = ? AND `card_id` = ?", (fp_id, card_id))
-            else:
-                cur.execute("SELECT * FROM karyawan WHERE `fp_id` = ?", (fp_id,))
-
+            cur.execute("SELECT * FROM karyawan WHERE `fp_id` = ?", (fp_id,))
             result = cur.fetchone()
             cur.close()
 
             if not result:
-                if use_nfc:
-                    self.emit(QtCore.SIGNAL('updateInfo'), "SIDIK JARI DAN KARTU TIDAK COCOK")
-                else:
-                    self.emit(QtCore.SIGNAL('updateInfo'), "ANDA TIDAK TERDAFTAR")
+                self.emit(QtCore.SIGNAL('updateInfo'), "SIDIK JARI TIDAK TERDAFTAR")
                 time.sleep(2)
                 continue
 
@@ -216,8 +185,10 @@ class FP():
             print "Template sidik jari #" + position + " gagal dihapus"
             return False
 
-    def clear_database(self):
-        self.fp.clearDatabase();
+    def clear_template(self):
+        for i in range(0,999):
+            print "Menghapus template #" + str(i)
+            self.fp.deleteTemplate(i)
 
     def check_memory(self):
         print('Template terpakai saat ini: ' + str(self.fp.getTemplateCount()) + '/' + str(self.fp.getStorageCapacity()))
@@ -264,23 +235,6 @@ class FP():
                 # untuk disimpan di database
                 return fp_id
 
-class NFC():
-    def __init__(self, device):
-        self.device = device
-        self.pn532 = PN532.PN532(self.device, 115200)
-        self.pn532.begin()
-        self.pn532.SAM_configuration()
-        # Get the firmware version from the chip and print(it out.)
-        ic, ver, rev, support = self.pn532.get_firmware_version()
-
-    def scan(self):
-        while True:
-            uid = self.pn532.read_passive_target()
-            if uid is "no_card":
-                continue
-
-            return str(binascii.hexlify(uid))
-
 def secs(start_time):
     dt = datetime.now() - start_time
     return dt.seconds
@@ -288,7 +242,7 @@ def secs(start_time):
 
 if __name__ == "__main__":
     # db_con = MySQLdb.connect(host="localhost", user="root", passwd="bismillah", db="access_door")
-    db_con = sqlite3.connect("access_door1.db", check_same_thread = False)
+    db_con = sqlite3.connect("access_door.db", check_same_thread = False)
 
     # populate db
     db_con.execute("CREATE TABLE IF NOT EXISTS `karyawan` ( \
@@ -296,7 +250,6 @@ if __name__ == "__main__":
         `nama` varchar(30) NOT NULL, \
         `jabatan` varchar(30) NOT NULL, \
         `fp_id` varchar(20) NOT NULL, \
-        `card_id` varchar(20) NULL, \
         `waktu_daftar` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP)");
 
     db_con.execute("CREATE TABLE IF NOT EXISTS `log` ( \
@@ -304,11 +257,7 @@ if __name__ == "__main__":
         `karyawan_id` int(11) NOT NULL, \
         `waktu` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP)")
 
-    use_nfc = True
     fp = FP("/dev/serial1")
-
-    if use_nfc:
-        nfc = NFC("/dev/serial2")
 
     # PIN pada raspberry
     pin_buka_pintu = 36  # untuk trigger buka pintu
@@ -348,30 +297,8 @@ if __name__ == "__main__":
                     if fp_id < 0:
                         continue
 
-                    if use_nfc:
-                        # scan kartu
-                        print "Tempelkan kartu..."
-                        card_id = nfc.scan()
-
-                        # cek apakah kartu sudah pernah terdaftar
-                        cur = db_con.cursor()
-                        cur.execute("SELECT * FROM `karyawan` WHERE card_id = ?", (card_id,))
-                        result = cur.fetchone()
-                        cur.close()
-
-                        if result:
-                            print "Kartu sudah terdaftar atas nama " + result[1]
-                            # hapus template yang sudah tersimpan
-                            fp.delete(fp_id)
-                            continue
-
                     cur = db_con.cursor()
-
-                    if use_nfc:
-                        cur.execute("INSERT INTO `karyawan` (`nama`, `jabatan`, `fp_id`, `card_id`) VALUES (?, ?, ?, ?)", (nama, jabatan, fp_id, card_id))
-                    else:
-                        cur.execute("INSERT INTO `karyawan` (`nama`, `jabatan`, `fp_id`) VALUES (?, ?, ?)", (nama, jabatan, fp_id))
-
+                    cur.execute("INSERT INTO `karyawan` (`nama`, `jabatan`, `fp_id`) VALUES (?, ?, ?)", (nama, jabatan, fp_id))
                     cur.close()
                     db_con.commit()
 
@@ -380,14 +307,14 @@ if __name__ == "__main__":
                 # UNTUK MELIHAT DAFTAR SEMUA KARYAWAN
                 elif cmd == "list":
                     cur = db_con.cursor()
-                    cur.execute("SELECT `id`, `nama`, `jabatan`, `fp_id`, `card_id`, datetime(`waktu_daftar`, 'localtime') FROM `karyawan` ORDER BY `nama` ASC")
+                    cur.execute("SELECT * FROM `karyawan` ORDER BY `nama` ASC")
                     result = cur.fetchall()
                     cur.close()
 
-                    data = [["ID", "NAMA", "JABATAN", "FINGERPRINT ID", "CARD ID", "WAKTU DAFTAR"]]
+                    data = [["ID", "NAMA", "JABATAN", "FINGERPRINT ID", "WAKTU DAFTAR"]]
 
                     for row, item in enumerate(result):
-                        data.append([str(item[0]), item[1], item[2], item[3], item[4], item[5]])
+                        data.append([str(item[0]), item[1], item[2], item[3], item[4]])
 
                     table = AsciiTable(data)
                     print table.table
@@ -395,7 +322,7 @@ if __name__ == "__main__":
                 # UNTUK MELIHAT LOG KARYAWAN MASUK
                 elif cmd == "log":
                     cur = db_con.cursor()
-                    cur.execute("SELECT datetime(`log`.`waktu`, 'localtime'), `karyawan`.`nama`, `karyawan`.`jabatan` FROM `log` LEFT JOIN `karyawan` ON `karyawan`.`id` = `log`.`karyawan_id` ORDER BY `log`.`waktu` ASC")
+                    cur.execute("SELECT `log`.`waktu`, `karyawan`.`nama`, `karyawan`.`jabatan` FROM `log` LEFT JOIN `karyawan` ON `karyawan`.`id` = `log`.`karyawan_id` ORDER BY `log`.`waktu` ASC")
                     result = cur.fetchall()
                     cur.close()
 
@@ -407,23 +334,8 @@ if __name__ == "__main__":
                     table = AsciiTable(data)
                     print table.table
 
-                elif cmd == "clear database":
-                    confirm = raw_input("Anda yakin (y/N)? ")
-                    if confirm == "y":
-                        cur = db_con.cursor()
-                        cur.execute("DELETE FROM `karyawan`")
-                        cur.execute("DELETE FROM `log`")
-                        cur.close()
-                        db_con.commit()
-                        fp.clear_database()
-
-                elif cmd == "clear log":
-                    confirm = raw_input("Anda yakin (y/N)? ")
-                    if confirm == "y":
-                        cur = db_con.cursor()
-                        cur.execute("DELETE FROM `log`")
-                        cur.close()
-                        db_con.commit()
+                elif cmd == "clear template":
+                    fp.clear_template()
 
                 # UNTUK MENGHAPUS DATA KARYAWAN
                 elif cmd == "hapus":
@@ -442,8 +354,8 @@ if __name__ == "__main__":
                         continue
 
                     data = [
-                        ["ID", "NAMA", "JABATAN", "FINGERPRINT ID", "CARD ID", "WAKTU DAFTAR"],
-                        [str(result[0]), result[1], result[2], result[3], result[4], result[5]]
+                        ["ID", "NAMA", "JABATAN", "FINGERPRINT ID", "WAKTU DAFTAR"],
+                        [str(result[0]), result[1], result[2], result[3], result[4]]
                     ]
 
                     table = AsciiTable(data)
@@ -509,8 +421,7 @@ if __name__ == "__main__":
                         ['daftar', 'Mendaftarkan karyawan baru'],
                         ['exit', 'Keluar dari progam ini'],
                         ['hapus', 'Menghapus karyawan'],
-                        ['clear database', 'Menghapus data karyawan dan log'],
-                        ['clear log', 'Menghapus log'],
+                        ['clear template', 'Menghapus semua template sidik jari'],
                         ['check memory fp', 'Check memory sensor finger print'],
                         ['door open', 'Buka pintu'],
                         ['door status', 'Status pintu'],
@@ -527,16 +438,9 @@ if __name__ == "__main__":
                 elif cmd == "akses":
                     print "Tempelkan jari Anda..."
                     fp_id = fp.scan()
-                    print "Tempelkan kartu Anda..."
-                    card_id = nfc.scan()
 
                     cur = db_con.cursor()
-
-                    if use_nfc:
-                        cur.execute("SELECT * FROM `karyawan` WHERE fp_id = ? AND card_id = ?", (fp_id, card_id))
-                    else:
-                        cur.execute("SELECT * FROM `karyawan` WHERE fp_id = ?", (fp_id,))
-
+                    cur.execute("SELECT * FROM `karyawan` WHERE fp_id = ?", (fp_id,))
                     result = cur.fetchone()
                     cur.close()
 
@@ -546,7 +450,7 @@ if __name__ == "__main__":
                         terlalu_lama = False
                         start_time = datetime.now()
 
-                        while GPIO.input(pin_status_pintu):
+                        while GPIO.input(pin_status_pintu == 1):
                             if secs(start_time) > 3:
                                 terlalu_lama = True
                                 break
@@ -564,7 +468,7 @@ if __name__ == "__main__":
                         cur.close()
                         db_con.commit()
 
-                        while not GPIO.input(pin_status_pintu):
+                        while GPIO.input(pin_status_pintu == 0):
                             print "Mohon tutup pintu"
                             time.sleep(1)
 
