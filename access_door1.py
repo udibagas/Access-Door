@@ -73,27 +73,39 @@ class ScanThread(QtCore.QThread):
 
             return str(binascii.hexlify(uid))
 
-    def run(self):
+    def buka_manual(self):
+        self.emit(QtCore.SIGNAL('updateInfo'), "SILAKAN MASUK")
+        GPIO.output(pin_buka_pintu, 1)
         time.sleep(3)
 
+        while not GPIO.input(pin_status_pintu):
+            self.emit(QtCore.SIGNAL('updateInfo'), "MOHON TUTUP PINTU")
+            time.sleep(1)
+
+        GPIO.output(pin_buka_pintu, 0)
+        self.emit(QtCore.SIGNAL('updateInfo'), "TEMPELKAN JARI ANDA")
+
+    def read_image(self):
+        while not fp.fp.readImage():
+            # jika pintu tertutup dan ada yang neken saklar buka manual
+            if GPIO.input(pin_status_pintu) and not GPIO.input(pin_buka_manual):
+                self.buka_manual()
+
+            else:
+                time.sleep(0.5)
+
+    def run(self):
+        self.emit(QtCore.SIGNAL('updateInfo'), "MOHON TUNGGU...")
+        time.sleep(3)
         while not self.exiting:
             self.emit(QtCore.SIGNAL('updateInfo'), "TEMPELKAN JARI ANDA")
 
-            while not fp.fp.readImage():
-                if GPIO.input(pin_status_pintu) and not GPIO.input(pin_buka_manual):
-                    self.emit(QtCore.SIGNAL('updateInfo'), "SILAKAN MASUK")
-                    GPIO.output(pin_buka_pintu, 1)
-                    time.sleep(3)
-
-                    while not GPIO.input(pin_status_pintu):
-                        self.emit(QtCore.SIGNAL('updateInfo'), "MOHON TUTUP PINTU")
-                        time.sleep(1)
-
-                    GPIO.output(pin_buka_pintu, 0)
-                    self.emit(QtCore.SIGNAL('updateInfo'), "TEMPELKAN JARI ANDA")
-
-                else:
-                    time.sleep(0.5)
+            try:
+                self.read_image()
+            except Exception as e:
+                self.emit(QtCore.SIGNAL('updateInfo'), "GAGAL MEMBACA SIDIK JARI")
+                time.sleep(2)
+                continue
 
             fp.fp.convertImage(0x01)
             result = fp.fp.searchTemplate()
@@ -105,18 +117,33 @@ class ScanThread(QtCore.QThread):
                 continue
 
             self.emit(QtCore.SIGNAL('updateInfo'), "TEMPELKAN KARTU")
-            card_id = self.read_card()
 
-            if not card_id:
-                continue
+            if use_nfc:
+                try:
+                    card_id = self.read_card()
+                except Exception as e:
+                    self.emit(QtCore.SIGNAL('updateInfo'), "GAGAL MEMBACA KARTU")
+                    time.sleep(2)
+                    continue
+
+                if not card_id:
+                    continue
 
             cur = db_con.cursor()
-            cur.execute("SELECT * FROM karyawan WHERE `fp_id` = ? AND `card_id` = ?", (fp_id, card_id))
+
+            if use_nfc:
+                cur.execute("SELECT * FROM karyawan WHERE `fp_id` = ? AND `card_id` = ?", (fp_id, card_id))
+            else:
+                cur.execute("SELECT * FROM karyawan WHERE `fp_id` = ?", (fp_id,))
+
             result = cur.fetchone()
             cur.close()
 
             if not result:
-                self.emit(QtCore.SIGNAL('updateInfo'), "SIDIK JARI DAN KARTU TIDAK COCOK")
+                if use_nfc:
+                    self.emit(QtCore.SIGNAL('updateInfo'), "SIDIK JARI DAN KARTU TIDAK COCOK")
+                else:
+                    self.emit(QtCore.SIGNAL('updateInfo'), "ANDA TIDAK TERDAFTAR")
                 time.sleep(2)
                 continue
 
@@ -269,7 +296,7 @@ if __name__ == "__main__":
         `nama` varchar(30) NOT NULL, \
         `jabatan` varchar(30) NOT NULL, \
         `fp_id` varchar(20) NOT NULL, \
-        `card_id` varchar(20) NOT NULL, \
+        `card_id` varchar(20) NULL, \
         `waktu_daftar` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP)");
 
     db_con.execute("CREATE TABLE IF NOT EXISTS `log` ( \
@@ -277,8 +304,11 @@ if __name__ == "__main__":
         `karyawan_id` int(11) NOT NULL, \
         `waktu` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP)")
 
+    use_nfc = True
     fp = FP("/dev/serial1")
-    nfc = NFC("/dev/serial2")
+
+    if use_nfc:
+        nfc = NFC("/dev/serial2")
 
     # PIN pada raspberry
     pin_buka_pintu = 36  # untuk trigger buka pintu
@@ -318,24 +348,30 @@ if __name__ == "__main__":
                     if fp_id < 0:
                         continue
 
-                    # scan kartu
-                    print "Tempelkan kartu..."
-                    card_id = nfc.scan()
+                    if use_nfc:
+                        # scan kartu
+                        print "Tempelkan kartu..."
+                        card_id = nfc.scan()
 
-                    # cek apakah kartu sudah pernah terdaftar
+                        # cek apakah kartu sudah pernah terdaftar
+                        cur = db_con.cursor()
+                        cur.execute("SELECT * FROM `karyawan` WHERE card_id = ?", (card_id,))
+                        result = cur.fetchone()
+                        cur.close()
+
+                        if result:
+                            print "Kartu sudah terdaftar atas nama " + result[1]
+                            # hapus template yang sudah tersimpan
+                            fp.delete(fp_id)
+                            continue
+
                     cur = db_con.cursor()
-                    cur.execute("SELECT * FROM `karyawan` WHERE card_id = ?", (card_id,))
-                    result = cur.fetchone()
-                    cur.close()
 
-                    if result:
-                        print "Kartu sudah terdaftar atas nama " + result[1]
-                        # hapus template yang sudah tersimpan
-                        fp.delete(fp_id)
-                        continue
+                    if use_nfc:
+                        cur.execute("INSERT INTO `karyawan` (`nama`, `jabatan`, `fp_id`, `card_id`) VALUES (?, ?, ?, ?)", (nama, jabatan, fp_id, card_id))
+                    else:
+                        cur.execute("INSERT INTO `karyawan` (`nama`, `jabatan`, `fp_id`) VALUES (?, ?, ?)", (nama, jabatan, fp_id))
 
-                    cur = db_con.cursor()
-                    cur.execute("INSERT INTO `karyawan` (`nama`, `jabatan`, `fp_id`, `card_id`) VALUES (?, ?, ?, ?)", (nama, jabatan, fp_id, card_id))
                     cur.close()
                     db_con.commit()
 
@@ -495,7 +531,12 @@ if __name__ == "__main__":
                     card_id = nfc.scan()
 
                     cur = db_con.cursor()
-                    cur.execute("SELECT * FROM `karyawan` WHERE fp_id = ? AND card_id = ?", (fp_id, card_id))
+
+                    if use_nfc:
+                        cur.execute("SELECT * FROM `karyawan` WHERE fp_id = ? AND card_id = ?", (fp_id, card_id))
+                    else:
+                        cur.execute("SELECT * FROM `karyawan` WHERE fp_id = ?", (fp_id,))
+
                     result = cur.fetchone()
                     cur.close()
 
