@@ -115,6 +115,15 @@ PIN | Type | Assignment | Koneksi
 38 | INPUT | Status Pintu | Sensor Magnet
 40 | INPUT | Buka Pintu Manual | Push Button
 
+### Relay
+PIN | Koneksi
+-- | --
+VCC | USB to Serial Adapter pin 5v
+GND | PIN 34 Raspberry Pi
+INPUT | PIN 36 Raspberry Pi
+COM | PSU 12V (+)
+NC | Magnetic (+)
+
 ### Fingerprint
 
 Warna | Assignment | USB to Serial Adapter Pin
