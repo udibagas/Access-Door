@@ -105,8 +105,6 @@ class ScanThread(QtCore.QThread):
             try:
                 self.read_image()
             except Exception as e:
-                self.emit(QtCore.SIGNAL('updateInfo'), "GAGAL MEMBACA SIDIK JARI")
-                time.sleep(2)
                 continue
 
             fp.fp.convertImage(0x01)
