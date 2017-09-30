@@ -21,6 +21,24 @@
 
 2. Ikuti langkah pada link berikut untuk instalasi OS pada SD card: https://www.raspberrypi.org/documentation/installation/installing-images/README.md
 
+## Enable SSH
+Masukkan SD Card yang telah terinstall OS Raspbian ke Laptop. Tambahkan baris ```/etc/init.d/ssh start``` pada file ```/etc/rc.local``` sebelum baris ```exit 0```. Edit file sebagai root
+
+Kemudian setting IP Address dengan mengdit file sbb:
+
+```
+vim /etc/dhcpcd.conf
+```
+
+tambahkan baris berikut:
+
+```
+interface eth0
+static ip_address=[IP Address]/[Subnet Mask]
+static routers=[Default Gateway]
+static domain_name_servers=[DNS Server]
+```
+
 ## Setting raspbian
 1. Koneksikan raspberry pi ke keyboard, mouse dan monitor
 2. Buka terminal, check link below: https://www.raspberrypi.org/documentation/configuration/raspi-config.md
@@ -33,8 +51,6 @@
     - Locale
     - Overclock to turbo (if available)
 
-3. Setting IP address untuk keperluan remote (SSH)
-
 ## Setting Monitor 3.5"
 
 Pasang monitor pada raspberry pi.
@@ -42,6 +58,7 @@ Pasang monitor pada raspberry pi.
 ```
 $ sudo apt update && sudo apt upgrade
 $ sudo rpi-update
+$ sudo apt install vim
 $ sudo vim /usr/share/X11/xorg.conf.d/99-fbturbo.conf
 ```
 
@@ -90,11 +107,16 @@ $ sudo reboot
 
 ```
 $ sudo apt install python-pysqlite2 python-texttable python-qt4
+$ sudo pip install terminaltables
 ```
 
-Install pyfingerprint. Refer to below link.
+Install pyfingerprint.
 
-https://github.com/bastianraschke/pyfingerprint
+```
+$ git clone https://github.com/bastianraschke/pyfingerprint.git
+$ cd pyfingerprint/src
+$ sudo python setup.py install
+```
 
 ## Installation
 
@@ -102,7 +124,14 @@ Login as ```pi``` user
 
 ```
 $ cd ~
-$ git clone https://github.com/udibagas/Access-Door.git .
+$ git clone https://github.com/udibagas/Access-Door.git
+```
+
+Pindahkan di direcroty ```/home/pi```
+
+```
+$ mv Access-Door/* .
+$ rm Access-Door -rf
 ```
 
 ## Pin Assignment

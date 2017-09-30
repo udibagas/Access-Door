@@ -304,11 +304,14 @@ if __name__ == "__main__":
         `karyawan_id` int(11) NOT NULL, \
         `waktu` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP)")
 
-    use_nfc = True
+    use_nfc = False
     fp = FP("/dev/serial1")
 
-    if use_nfc:
+    try:
         nfc = NFC("/dev/serial2")
+        use_nfc = True
+    except Exception as e:
+        pass
 
     # PIN pada raspberry
     pin_buka_pintu = 36  # untuk trigger buka pintu
