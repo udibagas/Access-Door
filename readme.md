@@ -51,6 +51,20 @@ static domain_name_servers=[DNS Server]
     - Locale
     - Overclock to turbo (if available)
 
+## Setting Timezone
+
+```
+$ sudo dpkg-reconfigure tzdata
+```
+
+atau
+
+```
+$ sudo tzselect
+```
+
+Pilih sesuai area setempat
+
 ## Setting Monitor 3.5"
 
 Pasang monitor pada raspberry pi.

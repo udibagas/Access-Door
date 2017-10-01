@@ -12,13 +12,13 @@ from RPi import GPIO
 import main_ui
 import sys
 import subprocess
+import requests
+import os
 
-# TODO : Optimasi pas cek status pintu waktu access granted
 
 class Main(QtGui.QWidget, main_ui.Ui_Form):
     def __init__(self):
         super(self.__class__, self).__init__()
-        global pin_buka_pintu
         self.setAttribute(QtCore.Qt.WA_DeleteOnClose)
         self.setupUi(self)
 
@@ -46,25 +46,16 @@ class ScanThread(QtCore.QThread):
     def __init__(self):
         super(self.__class__, self).__init__()
         self.exiting = False
-        global db_con
-        global fp
-        global pin_buka_manual
-        global pin_status_pintu
-        global pin_buka_pintu
 
     def __del__(self):
         self.exiting = True
         self.wait()
 
-    def secs(self, start_time):
-        dt = datetime.now() - start_time
-        return dt.seconds
-
     def read_card(self):
         start_time = datetime.now()
 
         while not self.exiting:
-            if self.secs(start_time) > 10:
+            if secs(start_time) > 10:
                 self.emit(QtCore.SIGNAL('updateInfo'), "WAKTU HABIS")
                 time.sleep(2)
                 return False
@@ -75,16 +66,44 @@ class ScanThread(QtCore.QThread):
 
             return str(binascii.hexlify(uid))
 
+    # buka manual masih sala sepertinya
     def buka_manual(self):
         self.emit(QtCore.SIGNAL('updateInfo'), "SILAKAN MASUK")
         GPIO.output(pin_buka_pintu, 1)
-        time.sleep(3)
+        terlalu_lama = False
+        start_time = datetime.now()
+
+        while GPIO.input(pin_status_pintu):
+            time.sleep(0.2)
+            if secs(start_time) > 3:
+                terlalu_lama = True
+                break
+
+        # ga jadi dibuka
+        if terlalu_lama:
+            GPIO.output(pin_buka_pintu, 0)
+            self.emit(QtCore.SIGNAL('updateInfo'), "TEMPELKAN JARI ANDA")
+            return
+
+        # jadi dibuka
+        try:
+            data = {'ip_address': ip_address, 'access_by': 'manual', 'status': 0}
+            r = requests.post(server_api_url, data=data)
+        except Exception as e:
+            pass
 
         while not GPIO.input(pin_status_pintu):
             self.emit(QtCore.SIGNAL('updateInfo'), "MOHON TUTUP PINTU")
             time.sleep(1)
 
         GPIO.output(pin_buka_pintu, 0)
+
+        try:
+            data = {'ip_address': ip_address, 'access_by': 'manual', 'status': 1}
+            r = requests.post(server_api_url, data=data)
+        except Exception as e:
+            pass
+
         self.emit(QtCore.SIGNAL('updateInfo'), "TEMPELKAN JARI ANDA")
 
     def read_image(self):
@@ -153,6 +172,7 @@ class ScanThread(QtCore.QThread):
             start_time = datetime.now()
 
             while GPIO.input(pin_status_pintu):
+                time.sleep(0.2)
                 if secs(start_time) > 3:
                     terlalu_lama = True
                     break
@@ -163,17 +183,30 @@ class ScanThread(QtCore.QThread):
                 time.sleep(2)
                 continue
 
-            time.sleep(3)
             cur = db_con.cursor()
             cur.execute("INSERT INTO `log` (`karyawan_id`) VALUES (?)", (result[0],))
             cur.close()
             db_con.commit()
+
+            # simpan log ke server (buka)
+            try:
+                data = {'ip_address': ip_address, 'access_by': result[1], 'status': 0}
+                r = requests.post(server_api_url, data=data)
+            except Exception as e:
+                pass
 
             while not GPIO.input(pin_status_pintu):
                 self.emit(QtCore.SIGNAL('updateInfo'), "MOHON TUTUP PINTU")
                 time.sleep(1)
 
             GPIO.output(pin_buka_pintu, 0)
+
+            # simpan log ke server (tutup)
+            try:
+                data = {'ip_address': ip_address, 'access_by': result[1], 'status': 1}
+                r = requests.post(server_api_url, data=data)
+            except Exception as e:
+                pass
 
 class FP():
     def __init__(self, device):
@@ -288,7 +321,7 @@ def secs(start_time):
 
 if __name__ == "__main__":
     # db_con = MySQLdb.connect(host="localhost", user="root", passwd="bismillah", db="access_door")
-    db_con = sqlite3.connect("access_door1.db", check_same_thread = False)
+    db_con = sqlite3.connect("access_door.db", check_same_thread = False)
 
     # populate db
     db_con.execute("CREATE TABLE IF NOT EXISTS `karyawan` ( \
@@ -303,6 +336,9 @@ if __name__ == "__main__":
         `id` INTEGER PRIMARY KEY AUTOINCREMENT, \
         `karyawan_id` int(11) NOT NULL, \
         `waktu` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP)")
+
+    ip_address = "10.45.5.126"
+    server_ip_url = "http://10.45.5.20/smading/api/logPintu"
 
     use_nfc = False
     fp = FP("/dev/serial1")
@@ -530,8 +566,10 @@ if __name__ == "__main__":
                 elif cmd == "akses":
                     print "Tempelkan jari Anda..."
                     fp_id = fp.scan()
-                    print "Tempelkan kartu Anda..."
-                    card_id = nfc.scan()
+
+                    if use_nfc:
+                        print "Tempelkan kartu Anda..."
+                        card_id = nfc.scan()
 
                     cur = db_con.cursor()
 
