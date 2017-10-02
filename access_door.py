@@ -92,6 +92,8 @@ class ScanThread(QtCore.QThread):
         except Exception as e:
             pass
 
+        # kasih jeda 3 detik biar masuk
+        time.sleep(3)
         while not GPIO.input(pin_status_pintu):
             self.emit(QtCore.SIGNAL('updateInfo'), "MOHON TUTUP PINTU")
             time.sleep(1)
@@ -195,6 +197,8 @@ class ScanThread(QtCore.QThread):
             except Exception as e:
                 pass
 
+            # kasih jeda 3 detik biar masuk
+            time.sleep(3)
             while not GPIO.input(pin_status_pintu):
                 self.emit(QtCore.SIGNAL('updateInfo'), "MOHON TUTUP PINTU")
                 time.sleep(1)
