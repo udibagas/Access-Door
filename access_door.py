@@ -88,7 +88,7 @@ class ScanThread(QtCore.QThread):
         # jadi dibuka
         try:
             data = {'ip_address': ip_address, 'access_by': 'manual', 'status': 0}
-            r = requests.post(server_api_url, data=data)
+            r = requests.post(api_url, data=data)
         except Exception as e:
             pass
 
@@ -100,7 +100,7 @@ class ScanThread(QtCore.QThread):
 
         try:
             data = {'ip_address': ip_address, 'access_by': 'manual', 'status': 1}
-            r = requests.post(server_api_url, data=data)
+            r = requests.post(api_url, data=data)
         except Exception as e:
             pass
 
@@ -191,7 +191,7 @@ class ScanThread(QtCore.QThread):
             # simpan log ke server (buka)
             try:
                 data = {'ip_address': ip_address, 'access_by': result[1], 'status': 0}
-                r = requests.post(server_api_url, data=data)
+                r = requests.post(api_url, data=data)
             except Exception as e:
                 pass
 
@@ -204,7 +204,7 @@ class ScanThread(QtCore.QThread):
             # simpan log ke server (tutup)
             try:
                 data = {'ip_address': ip_address, 'access_by': result[1], 'status': 1}
-                r = requests.post(server_api_url, data=data)
+                r = requests.post(api_url, data=data)
             except Exception as e:
                 pass
 
@@ -338,7 +338,7 @@ if __name__ == "__main__":
         `waktu` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP)")
 
     ip_address = "10.45.5.126"
-    server_ip_url = "http://10.45.5.20/smading/api/logPintu"
+    api_url = "http://10.45.5.20/smading/api/logPintu"
 
     use_nfc = False
     fp = FP("/dev/serial1")
