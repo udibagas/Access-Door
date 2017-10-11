@@ -39,7 +39,7 @@ class Ui_Form(object):
         sizePolicy.setHeightForWidth(self.logo.sizePolicy().hasHeightForWidth())
         self.logo.setSizePolicy(sizePolicy)
         self.logo.setText(_fromUtf8(""))
-        self.logo.setPixmap(QtGui.QPixmap(_fromUtf8("logo.png")))
+        self.logo.setPixmap(QtGui.QPixmap(_fromUtf8("kementan-small.png")))
         self.logo.setAlignment(QtCore.Qt.AlignCenter)
         self.logo.setObjectName(_fromUtf8("logo"))
         self.verticalLayout_2.addWidget(self.logo)
@@ -105,8 +105,7 @@ class Ui_Form(object):
 
     def retranslateUi(self, Form):
         Form.setWindowTitle(_translate("Form", "Form", None))
-        self.pemkab.setText(_translate("Form", "KABUPATEN PURWAKARTA", None))
+        self.pemkab.setText(_translate("Form", "KEMENTRIAN PERTANIAN", None))
         self.tanggal.setText(_translate("Form", "tanggal", None))
         self.jam.setText(_translate("Form", "jam", None))
         self.info.setText(_translate("Form", "info", None))
-

@@ -73,11 +73,12 @@ class ScanThread(QtCore.QThread):
         terlalu_lama = False
         start_time = datetime.now()
 
-        while GPIO.input(pin_status_pintu):
-            time.sleep(0.2)
-            if secs(start_time) > 3:
-                terlalu_lama = True
-                break
+        if sensor_pintu_exists:
+            while GPIO.input(pin_status_pintu):
+                time.sleep(0.2)
+                if secs(start_time) > 3:
+                    terlalu_lama = True
+                    break
 
         # ga jadi dibuka
         if terlalu_lama:
@@ -92,11 +93,13 @@ class ScanThread(QtCore.QThread):
         except Exception as e:
             pass
 
-        # kasih jeda 3 detik biar masuk
-        time.sleep(3)
-        while not GPIO.input(pin_status_pintu):
-            self.emit(QtCore.SIGNAL('updateInfo'), "MOHON TUTUP PINTU")
-            time.sleep(1)
+        # kasih jeda 5 detik biar masuk
+        time.sleep(5)
+
+        if sensor_pintu_exists:
+            while not GPIO.input(pin_status_pintu):
+                self.emit(QtCore.SIGNAL('updateInfo'), "MOHON TUTUP PINTU")
+                time.sleep(1)
 
         GPIO.output(pin_buka_pintu, 0)
 
@@ -119,7 +122,7 @@ class ScanThread(QtCore.QThread):
 
     def run(self):
         self.emit(QtCore.SIGNAL('updateInfo'), "MOHON TUNGGU...")
-        time.sleep(3)
+        time.sleep(5)
         while not self.exiting:
             self.emit(QtCore.SIGNAL('updateInfo'), "TEMPELKAN JARI ANDA")
 
@@ -173,11 +176,12 @@ class ScanThread(QtCore.QThread):
             terlalu_lama = False
             start_time = datetime.now()
 
-            while GPIO.input(pin_status_pintu):
-                time.sleep(0.2)
-                if secs(start_time) > 3:
-                    terlalu_lama = True
-                    break
+            if sensor_pintu_exists:
+                while GPIO.input(pin_status_pintu):
+                    time.sleep(0.2)
+                    if secs(start_time) > 3:
+                        terlalu_lama = True
+                        break
 
             if terlalu_lama:
                 GPIO.output(pin_buka_pintu, 0)
@@ -197,11 +201,13 @@ class ScanThread(QtCore.QThread):
             except Exception as e:
                 pass
 
-            # kasih jeda 3 detik biar masuk
-            time.sleep(3)
-            while not GPIO.input(pin_status_pintu):
-                self.emit(QtCore.SIGNAL('updateInfo'), "MOHON TUTUP PINTU")
-                time.sleep(1)
+            # kasih jeda 5 detik biar masuk
+            time.sleep(5)
+
+            if sensor_pintu_exists:
+                while not GPIO.input(pin_status_pintu):
+                    self.emit(QtCore.SIGNAL('updateInfo'), "MOHON TUTUP PINTU")
+                    time.sleep(1)
 
             GPIO.output(pin_buka_pintu, 0)
 
@@ -341,10 +347,11 @@ if __name__ == "__main__":
         `karyawan_id` int(11) NOT NULL, \
         `waktu` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP)")
 
-    ip_address = "10.45.5.126"
-    api_url = "http://10.45.5.20/smading/api/logPintu"
+    ip_address = "192.168.99.208"
+    api_url = "http://192.168.99.150/smading/api/logPintu"
 
     use_nfc = False
+    sensor_pintu_exists = False
     fp = FP("/dev/serial1")
 
     try:
@@ -521,7 +528,7 @@ if __name__ == "__main__":
                         print "Pintu sudah terbuka"
                     else:
                         GPIO.output(pin_buka_pintu, 1)
-                        time.sleep(3)
+                        time.sleep(5)
                         GPIO.output(pin_buka_pintu, 0)
 
                 elif cmd == "door status":
@@ -539,7 +546,7 @@ if __name__ == "__main__":
                         while GPIO.input(pin_buka_manual):
                             pass
                         GPIO.output(pin_buka_pintu, 1)
-                        time.sleep(3)
+                        time.sleep(5)
                         GPIO.output(pin_buka_pintu, 0)
 
 
@@ -602,7 +609,7 @@ if __name__ == "__main__":
                             continue
 
                         # kunci kembali pintu
-                        time.sleep(3)
+                        time.sleep(5)
                         GPIO.output(pin_buka_pintu, 0)
                         cur = db_con.cursor()
                         cur.execute("INSERT INTO `log` (`karyawan_id`) VALUES (?)", (result[0],))
