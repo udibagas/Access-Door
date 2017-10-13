@@ -14,6 +14,7 @@ import sys
 import subprocess
 import requests
 import os
+import json
 
 
 class Main(QtGui.QWidget, main_ui.Ui_Form):
@@ -69,12 +70,12 @@ class ScanThread(QtCore.QThread):
     # buka manual masih sala sepertinya
     def buka_manual(self):
         self.emit(QtCore.SIGNAL('updateInfo'), "SILAKAN MASUK")
-        GPIO.output(pin_buka_pintu, 1)
+        GPIO.output(config["gpio_pin"]["relay"], 1)
         terlalu_lama = False
         start_time = datetime.now()
 
-        if sensor_pintu_exists:
-            while GPIO.input(pin_status_pintu):
+        if config["features"]["sensor_pintu"]:
+            while GPIO.input(config["gpio_pin"]["sensor_pintu"]):
                 time.sleep(0.2)
                 if secs(start_time) > 3:
                     terlalu_lama = True
@@ -82,30 +83,30 @@ class ScanThread(QtCore.QThread):
 
         # ga jadi dibuka
         if terlalu_lama:
-            GPIO.output(pin_buka_pintu, 0)
+            GPIO.output(config["gpio_pin"]["relay"], 0)
             self.emit(QtCore.SIGNAL('updateInfo'), "TEMPELKAN JARI ANDA")
             return
 
         # jadi dibuka
         try:
-            data = {'ip_address': ip_address, 'access_by': 'manual', 'status': 0}
-            r = requests.post(api_url, data=data)
+            data = {'ip_address': config["ip_address"], 'access_by': 'manual', 'status': 0}
+            r = requests.post(config["api_url"], data=data)
         except Exception as e:
             pass
 
         # kasih jeda 5 detik biar masuk
-        time.sleep(5)
+        time.sleep(config["timer"]["open_duration"])
 
-        if sensor_pintu_exists:
-            while not GPIO.input(pin_status_pintu):
+        if config["features"]["sensor_pintu"]:
+            while not GPIO.input(config["gpio_pin"]["sensor_pintu"]):
                 self.emit(QtCore.SIGNAL('updateInfo'), "MOHON TUTUP PINTU")
                 time.sleep(1)
 
-        GPIO.output(pin_buka_pintu, 0)
+        GPIO.output(config["gpio_pin"]["relay"], 0)
 
         try:
-            data = {'ip_address': ip_address, 'access_by': 'manual', 'status': 1}
-            r = requests.post(api_url, data=data)
+            data = {'ip_address': config["ip_address"], 'access_by': 'manual', 'status': 1}
+            r = requests.post(config["api_url"], data=data)
         except Exception as e:
             pass
 
@@ -114,7 +115,7 @@ class ScanThread(QtCore.QThread):
     def read_image(self):
         while not fp.fp.readImage():
             # jika pintu tertutup dan ada yang neken saklar buka manual
-            if GPIO.input(pin_status_pintu) and not GPIO.input(pin_buka_manual):
+            if GPIO.input(config["gpio_pin"]["sensor_pintu"]) and not GPIO.input(config["gpio_pin"]["saklar_manual"]):
                 self.buka_manual()
 
             else:
@@ -122,7 +123,7 @@ class ScanThread(QtCore.QThread):
 
     def run(self):
         self.emit(QtCore.SIGNAL('updateInfo'), "MOHON TUNGGU...")
-        time.sleep(5)
+        time.sleep(3)
         while not self.exiting:
             self.emit(QtCore.SIGNAL('updateInfo'), "TEMPELKAN JARI ANDA")
 
@@ -140,14 +141,11 @@ class ScanThread(QtCore.QThread):
                 time.sleep(2)
                 continue
 
-            self.emit(QtCore.SIGNAL('updateInfo'), "TEMPELKAN KARTU")
-
             if use_nfc:
+                self.emit(QtCore.SIGNAL('updateInfo'), "TEMPELKAN KARTU")
                 try:
                     card_id = self.read_card()
                 except Exception as e:
-                    self.emit(QtCore.SIGNAL('updateInfo'), "GAGAL MEMBACA KARTU")
-                    time.sleep(2)
                     continue
 
                 if not card_id:
@@ -172,19 +170,19 @@ class ScanThread(QtCore.QThread):
                 continue
 
             self.emit(QtCore.SIGNAL('updateInfo'), "SILAKAN MASUK, " + result[1].upper())
-            GPIO.output(pin_buka_pintu, 1)
+            GPIO.output(config["gpio_pin"]["relay"], 1)
             terlalu_lama = False
             start_time = datetime.now()
 
-            if sensor_pintu_exists:
-                while GPIO.input(pin_status_pintu):
+            if config["features"]["sensor_pintu"]:
+                while GPIO.input(config["gpio_pin"]["sensor_pintu"]):
                     time.sleep(0.2)
                     if secs(start_time) > 3:
                         terlalu_lama = True
                         break
 
             if terlalu_lama:
-                GPIO.output(pin_buka_pintu, 0)
+                GPIO.output(config["gpio_pin"]["relay"], 0)
                 self.emit(QtCore.SIGNAL('updateInfo'), "WAKTU HABIS")
                 time.sleep(2)
                 continue
@@ -196,25 +194,25 @@ class ScanThread(QtCore.QThread):
 
             # simpan log ke server (buka)
             try:
-                data = {'ip_address': ip_address, 'access_by': result[1], 'status': 0}
-                r = requests.post(api_url, data=data)
+                data = {'ip_address': config["ip_address"], 'access_by': result[1], 'status': 0}
+                r = requests.post(config["api_url"], data=data)
             except Exception as e:
                 pass
 
             # kasih jeda 5 detik biar masuk
-            time.sleep(5)
+            time.sleep(config["timer"]["open_duration"])
 
-            if sensor_pintu_exists:
-                while not GPIO.input(pin_status_pintu):
+            if config["features"]["sensor_pintu"]:
+                while not GPIO.input(config["gpio_pin"]["sensor_pintu"]):
                     self.emit(QtCore.SIGNAL('updateInfo'), "MOHON TUTUP PINTU")
                     time.sleep(1)
 
-            GPIO.output(pin_buka_pintu, 0)
+            GPIO.output(config["gpio_pin"]["relay"], 0)
 
             # simpan log ke server (tutup)
             try:
-                data = {'ip_address': ip_address, 'access_by': result[1], 'status': 1}
-                r = requests.post(api_url, data=data)
+                data = {'ip_address': config["ip_address"], 'access_by': result[1], 'status': 1}
+                r = requests.post(config["api_url"], data=data)
             except Exception as e:
                 pass
 
@@ -330,47 +328,59 @@ def secs(start_time):
 
 
 if __name__ == "__main__":
-    # db_con = MySQLdb.connect(host="localhost", user="root", passwd="bismillah", db="access_door")
-    db_con = sqlite3.connect("access_door.db", check_same_thread = False)
+    try:
+        with open('config.json') as config_file:
+            config = json.load(config_file)
+    except Exception as e:
+        print "Gagal membuka file konfigurasi (config.json)"
+        exit()
 
-    # populate db
-    db_con.execute("CREATE TABLE IF NOT EXISTS `karyawan` ( \
-        `id` INTEGER PRIMARY KEY AUTOINCREMENT, \
-        `nama` varchar(30) NOT NULL, \
-        `jabatan` varchar(30) NOT NULL, \
-        `fp_id` varchar(20) NOT NULL, \
-        `card_id` varchar(20) NULL, \
-        `waktu_daftar` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP)");
+    if config["database"]["default"] == "mysql":
+        con = config["database"]["connection"]["mysql"]
+        db_con = MySQLdb.connect(
+            host=con["host"],
+            user=con["user"],
+            passwd=con["pass"],
+            db=con["db"]
+        )
 
-    db_con.execute("CREATE TABLE IF NOT EXISTS `log` ( \
-        `id` INTEGER PRIMARY KEY AUTOINCREMENT, \
-        `karyawan_id` int(11) NOT NULL, \
-        `waktu` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP)")
+    elif config["database"]["default"] == "sqlite":
+        con = config["database"]["connection"]["sqlite"]
+        db_con = sqlite3.connect(con["db"], check_same_thread = False)
 
-    ip_address = "192.168.99.208"
-    api_url = "http://192.168.99.150/smading/api/logPintu"
+        # populate db
+        db_con.execute("CREATE TABLE IF NOT EXISTS `karyawan` ( \
+            `id` INTEGER PRIMARY KEY AUTOINCREMENT, \
+            `nama` varchar(30) NOT NULL, \
+            `jabatan` varchar(30) NOT NULL, \
+            `fp_id` varchar(20) NOT NULL, \
+            `card_id` varchar(20) NULL, \
+            `waktu_daftar` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP)");
+
+        db_con.execute("CREATE TABLE IF NOT EXISTS `log` ( \
+            `id` INTEGER PRIMARY KEY AUTOINCREMENT, \
+            `karyawan_id` int(11) NOT NULL, \
+            `waktu` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP)")
+
+    else:
+        print "Koneksi database tidak dikenal (mysql/sqlite)"
+        exit()
 
     use_nfc = False
-    sensor_pintu_exists = False
-    fp = FP("/dev/serial1")
+    fp = FP(config["device"]["fp"])
 
     try:
-        nfc = NFC("/dev/serial2")
+        nfc = NFC(config["device"]["nfc"])
         use_nfc = True
     except Exception as e:
         pass
 
-    # PIN pada raspberry
-    pin_buka_pintu = 36  # untuk trigger buka pintu
-    pin_status_pintu = 38
-    pin_buka_manual = 40
-
     # inisiasi GPIO pada raspberry
     GPIO.setmode(GPIO.BOARD)
     GPIO.setwarnings(False)
-    GPIO.setup(pin_buka_pintu, GPIO.OUT)
-    GPIO.setup(pin_status_pintu, GPIO.IN , pull_up_down=GPIO.PUD_UP)
-    GPIO.setup(pin_buka_manual, GPIO.IN, pull_up_down=GPIO.PUD_UP)
+    GPIO.setup(config["gpio_pin"]["relay"], GPIO.OUT)
+    GPIO.setup(config["gpio_pin"]["sensor_pintu"], GPIO.IN , pull_up_down=GPIO.PUD_UP)
+    GPIO.setup(config["gpio_pin"]["saklar_manual"], GPIO.IN, pull_up_down=GPIO.PUD_UP)
 
     if len(sys.argv) > 1 and sys.argv[1] == "run":
         app = QtGui.QApplication(sys.argv)
@@ -524,30 +534,30 @@ if __name__ == "__main__":
                     fp.check_memory()
 
                 elif cmd == "door open":
-                    if not GPIO.input(pin_status_pintu):
+                    if not GPIO.input(config["gpio_pin"]["sensor_pintu"]):
                         print "Pintu sudah terbuka"
                     else:
-                        GPIO.output(pin_buka_pintu, 1)
-                        time.sleep(5)
-                        GPIO.output(pin_buka_pintu, 0)
+                        GPIO.output(config["gpio_pin"]["relay"], 1)
+                        time.sleep(config["timer"]["open_duration"])
+                        GPIO.output(config["gpio_pin"]["relay"], 0)
 
                 elif cmd == "door status":
-                    if GPIO.input(pin_status_pintu):
+                    if GPIO.input(config["gpio_pin"]["sensor_pintu"]):
                         print "Pintu tertutup"
                     else:
                         print "Pintu terbuka"
 
                 elif cmd == "open manual":
-                    if not GPIO.input(pin_status_pintu):
+                    if not GPIO.input(config["gpio_pin"]["sensor_pintu"]):
                         print "Pintu sudah terbuka"
 
                     else:
                         print "Tekan tombol"
-                        while GPIO.input(pin_buka_manual):
+                        while GPIO.input(config["gpio_pin"]["saklar_manual"]):
                             pass
-                        GPIO.output(pin_buka_pintu, 1)
-                        time.sleep(5)
-                        GPIO.output(pin_buka_pintu, 0)
+                        GPIO.output(config["gpio_pin"]["relay"], 1)
+                        time.sleep(config["timer"]["open_duration"])
+                        GPIO.output(config["gpio_pin"]["relay"], 0)
 
 
                 # UNTUK MENAMPILKAN DAFTAR PERINTAR
@@ -594,29 +604,29 @@ if __name__ == "__main__":
 
                     if result:
                         print "SELAMAT DATANG " + result[1] + ". SILAKAN MASUK."
-                        GPIO.output(pin_buka_pintu, 1)
+                        GPIO.output(config["gpio_pin"]["relay"], 1)
                         terlalu_lama = False
                         start_time = datetime.now()
 
-                        while GPIO.input(pin_status_pintu):
+                        while GPIO.input(config["gpio_pin"]["sensor_pintu"]):
                             if secs(start_time) > 3:
                                 terlalu_lama = True
                                 break
 
                         if terlalu_lama:
-                            GPIO.output(pin_buka_pintu, 0)
+                            GPIO.output(config["gpio_pin"]["relay"], 0)
                             print "Anda terlalu lama. Pintu nutup lagi."
                             continue
 
                         # kunci kembali pintu
-                        time.sleep(5)
-                        GPIO.output(pin_buka_pintu, 0)
+                        time.sleep(config["timer"]["open_duration"])
+                        GPIO.output(config["gpio_pin"]["relay"], 0)
                         cur = db_con.cursor()
                         cur.execute("INSERT INTO `log` (`karyawan_id`) VALUES (?)", (result[0],))
                         cur.close()
                         db_con.commit()
 
-                        while not GPIO.input(pin_status_pintu):
+                        while not GPIO.input(config["gpio_pin"]["sensor_pintu"]):
                             print "Mohon tutup pintu"
                             time.sleep(1)
 
