@@ -1,0 +1,47 @@
+{
+    "name": "Pintu Belakang",
+    "building": "D",
+    "room": "Data Center",
+    "ip_address": "192.168.99.203",
+    "api_url": "http://192.168.99.150/smading/api/logPintu",
+    "logo": "kementan-small.png",
+    "description": "KEMENTERIAN PERTANIAN RI",
+    "device": {
+        "fp": "/dev/serial1",
+        "nfc": "/dev/serial2"
+    },
+    "modes": [
+        "fingerprint only",
+        "nfc only",
+        "fingerprint or nfc",
+        "fingerprint and nfc"
+    ],
+    "active_mode": 1,
+    "gpio_pin": {
+        "relay": 36,
+        "sensor_pintu": 38,
+        "saklar_manual": 40
+    },
+    "features": {
+        "sensor_pintu": false,
+        "camera": false
+    },
+    "timer": {
+        "open_duration": 5
+    },
+    "database": {
+        "default": "sqlite",
+        "connection": {
+            "mysql": {
+                "host": "localhost",
+                "port": 3306,
+                "user": "root",
+                "pass": "bismillah",
+                "db": "access_door"
+            },
+            "sqlite": {
+                "db": "access_door.db"
+            }
+        }
+    }
+}
