@@ -15,6 +15,7 @@ import subprocess
 import requests
 import os
 import json
+import logging
 
 
 class Main(QtGui.QWidget, main_ui.Ui_Form):
@@ -33,6 +34,7 @@ class Main(QtGui.QWidget, main_ui.Ui_Form):
 
         self.scan_finger_thread = ScanFingerThread()
         self.connect(self.scan_finger_thread, QtCore.SIGNAL('updateInfo'), self.update_info)
+        logger.debug("Scanning finger...")
         self.scan_finger_thread.start()
 
     def update_info(self, info):
@@ -57,6 +59,7 @@ class ScanFingerThread(QtCore.QThread):
 
         while not self.exiting:
             if secs(start_time) > 10:
+                logger.debug("Timeout...")
                 self.emit(QtCore.SIGNAL('updateInfo'), "WAKTU HABIS")
                 time.sleep(2)
                 return False
@@ -69,6 +72,7 @@ class ScanFingerThread(QtCore.QThread):
 
     # buka manual masih sala sepertinya
     def buka_manual(self):
+        logger.info("Buka manual")
         self.emit(QtCore.SIGNAL('updateInfo'), "SILAKAN MASUK")
         GPIO.output(config["gpio_pin"]["relay"], 1)
         terlalu_lama = False
@@ -83,6 +87,7 @@ class ScanFingerThread(QtCore.QThread):
 
         # ga jadi dibuka
         if terlalu_lama:
+            logger.debug("Ga jadi buka")
             GPIO.output(config["gpio_pin"]["relay"], 0)
             self.emit(QtCore.SIGNAL('updateInfo'), "TEMPELKAN JARI ANDA")
             return
@@ -99,6 +104,7 @@ class ScanFingerThread(QtCore.QThread):
 
         if config["features"]["sensor_pintu"]:
             while not GPIO.input(config["gpio_pin"]["sensor_pintu"]):
+                logger.warning("Pintu terbuka")
                 self.emit(QtCore.SIGNAL('updateInfo'), "MOHON TUTUP PINTU")
                 time.sleep(1)
 
@@ -110,6 +116,7 @@ class ScanFingerThread(QtCore.QThread):
         except Exception as e:
             pass
 
+        logger.debug("Pintu tertutup...")
         self.emit(QtCore.SIGNAL('updateInfo'), "TEMPELKAN JARI ANDA")
 
     def read_image(self):
@@ -137,10 +144,12 @@ class ScanFingerThread(QtCore.QThread):
             fp_id = result[0]
 
             if fp_id == -1:
+                logger.info("Sidik jari tidak ditemukan")
                 self.emit(QtCore.SIGNAL('updateInfo'), "SIDIK JARI TIDAK DITEMUKAN")
                 time.sleep(2)
                 continue
 
+            logger.info("Sidik jari ditemukan")
             if use_nfc:
                 self.emit(QtCore.SIGNAL('updateInfo'), "TEMPELKAN KARTU")
                 try:
@@ -163,12 +172,15 @@ class ScanFingerThread(QtCore.QThread):
 
             if not result:
                 if use_nfc:
+                    logger.info("Sidik jari dan kartu tidak cocok")
                     self.emit(QtCore.SIGNAL('updateInfo'), "SIDIK JARI DAN KARTU TIDAK COCOK")
                 else:
+                    logger.info("Sidik jari tidak terdaftar")
                     self.emit(QtCore.SIGNAL('updateInfo'), "ANDA TIDAK TERDAFTAR")
                 time.sleep(2)
                 continue
 
+            logger.info("ACCESS GRANTED!")
             self.emit(QtCore.SIGNAL('updateInfo'), "SILAKAN MASUK, " + result[1].upper())
             GPIO.output(config["gpio_pin"]["relay"], 1)
             terlalu_lama = False
@@ -182,6 +194,7 @@ class ScanFingerThread(QtCore.QThread):
                         break
 
             if terlalu_lama:
+                logger.info("Timeout")
                 GPIO.output(config["gpio_pin"]["relay"], 0)
                 self.emit(QtCore.SIGNAL('updateInfo'), "WAKTU HABIS")
                 time.sleep(2)
@@ -204,9 +217,11 @@ class ScanFingerThread(QtCore.QThread):
 
             if config["features"]["sensor_pintu"]:
                 while not GPIO.input(config["gpio_pin"]["sensor_pintu"]):
+                    logger.info("Pintu terbuka")
                     self.emit(QtCore.SIGNAL('updateInfo'), "MOHON TUTUP PINTU")
                     time.sleep(1)
 
+            logger.info("Pintu tertutup")
             GPIO.output(config["gpio_pin"]["relay"], 0)
 
             # simpan log ke server (tutup)
@@ -228,8 +243,8 @@ class FP():
                 exit(0)
 
         except Exception as e:
-            print('Gagal menginisialisasi fingerprint!')
-            print('Pesan kesalahan: ' + str(e))
+            logger.error("Gagal menginisialisasi fingerprint!")
+            logger.error(str(e))
             exit(0)
 
     def scan(self):
@@ -241,24 +256,28 @@ class FP():
         fp_id = result[0]
 
         if fp_id >= 0:
-            print "Sidik jari ditemukan pada #" + str(fp_id)
+            logger.info("Sidik jari ditemukan pada #" + str(fp_id))
             return fp_id
 
         else:
-            print "Jari tidak terdaftar"
+            logger.info("Jari tidak terdaftar")
             return -1
 
     def delete(self, position):
         if self.fp.deleteTemplate(position):
+            logger.info("Template sidik jari berhasil dihapus")
             print "Template sidik jari berhasil dihapus"
             return True
 
         else:
+            logger.warning("Template sidik jari #" + position + " gagal dihapus")
             print "Template sidik jari #" + position + " gagal dihapus"
             return False
 
     def clear_database(self):
+        logger.info("Clearing template...")
         self.fp.clearDatabase();
+        logger.info("Template cleared")
 
     def check_memory(self):
         print('Template terpakai saat ini: ' + str(self.fp.getTemplateCount()) + '/' + str(self.fp.getStorageCapacity()))
@@ -328,25 +347,35 @@ def secs(start_time):
 
 
 if __name__ == "__main__":
+    logger = logging.getLogger(__name__)
+    logger.setLevel(logging.DEBUG)
+    handler = logging.FileHandler('access_door.log')
+    handler.setLevel(logging.DEBUG)
+    formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
+    handler.setFormatter(formatter)
+    logger.addHandler(handler)
+
+    config_file_path = os.path.join(os.path.dirname(__file__), 'config.json')
+
     try:
-        with open('config.json') as config_file:
+        with open(config_file_path) as config_file:
             config = json.load(config_file)
     except Exception as e:
         print "Gagal membuka file konfigurasi (config.json)"
         exit()
 
-    if config["database"]["default"] == "mysql":
-        con = config["database"]["connection"]["mysql"]
+    if config["database"]["driver"] == "mysql":
+        con = config["database"]
         db_con = MySQLdb.connect(
             host=con["host"],
             user=con["user"],
             passwd=con["pass"],
-            db=con["db"]
+            db=con["name"]
         )
 
-    elif config["database"]["default"] == "sqlite":
-        con = config["database"]["connection"]["sqlite"]
-        db_con = sqlite3.connect(con["db"], check_same_thread = False)
+    elif config["database"]["driver"] == "sqlite":
+        con = config["database"]
+        db_con = sqlite3.connect(con["name"], check_same_thread = False)
 
         # populate db
         db_con.execute("CREATE TABLE IF NOT EXISTS `karyawan` ( \
@@ -363,19 +392,27 @@ if __name__ == "__main__":
             `waktu` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP)")
 
     else:
-        print "Koneksi database tidak dikenal (mysql/sqlite)"
+        logger.error("Koneksi database tidak dikenal (mysql/sqlite)")
         exit()
 
     use_nfc = False
-    fp = FP(config["device"]["fp"])
 
     try:
+        logger.debug("Inisiasi sensor fingerprint")
+        fp = FP(config["device"]["fp"])
+    except Exception as e:
+        logger.error("Sensor fingerprint tidak ditemukan")
+        exit()
+
+    try:
+        logger.debug("Inisiasi NFC Reader")
         nfc = NFC(config["device"]["nfc"])
         use_nfc = True
     except Exception as e:
-        pass
+        logger.info("Sensor NFC tidak ditemukan")
 
     # inisiasi GPIO pada raspberry
+    logger.debug("Inisiasi GPIO")
     GPIO.setmode(GPIO.BOARD)
     GPIO.setwarnings(False)
     GPIO.setup(config["gpio_pin"]["relay"], GPIO.OUT)
@@ -383,6 +420,7 @@ if __name__ == "__main__":
     GPIO.setup(config["gpio_pin"]["saklar_manual"], GPIO.IN, pull_up_down=GPIO.PUD_UP)
 
     if len(sys.argv) > 1 and sys.argv[1] == "run":
+        logger.debug("Starting GUI..")
         app = QtGui.QApplication(sys.argv)
         ui = Main()
         sys.exit(app.exec_())
