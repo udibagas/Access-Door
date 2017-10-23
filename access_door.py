@@ -16,6 +16,8 @@ import requests
 import os
 import json
 import logging
+import logging.handlers
+import uuid
 
 
 class Main(QtGui.QWidget, main_ui.Ui_Form):
@@ -25,17 +27,30 @@ class Main(QtGui.QWidget, main_ui.Ui_Form):
         self.setupUi(self)
 
         self.update_clock()
-        self.update_info("TEMPELKAN JARI ANDA")
+        self.info.setText("TEMPELKAN JARI ATAU KARTU ANDA")
+        self.instansi.setText(config["instansi"])
+        self.logo.setPixmap(QtGui.QPixmap(config["logo"]))
         self.showFullScreen()
 
         self.timer = QtCore.QTimer()
         self.timer.timeout.connect(self.update_clock)
         self.timer.start(1000)
 
-        self.scan_finger_thread = ScanFingerThread()
-        self.connect(self.scan_finger_thread, QtCore.SIGNAL('updateInfo'), self.update_info)
-        logger.debug("Scanning finger...")
-        self.scan_finger_thread.start()
+        if use_fp:
+            self.scan_finger_thread = ScanFingerThread()
+            self.connect(self.scan_finger_thread, QtCore.SIGNAL('updateInfo'), self.update_info)
+            self.connect(self.scan_finger_thread, QtCore.SIGNAL('bukaPintu'), self.buka_pintu)
+            self.scan_finger_thread.start()
+
+        if use_nfc:
+            self.scan_card_thread = ScanCardThread()
+            self.connect(self.scan_card_thread, QtCore.SIGNAL('updateInfo'), self.update_info)
+            self.connect(self.scan_card_thread, QtCore.SIGNAL('bukaPintu'), self.buka_pintu)
+            self.scan_card_thread.start()
+
+        self.open_manual_thread = OpenManualThread()
+        self.connect(self.open_manual_thread, QtCore.SIGNAL('bukaPintu'), self.buka_pintu)
+        self.open_manual_thread.start()
 
     def update_info(self, info):
         self.info.setText(info)
@@ -43,6 +58,133 @@ class Main(QtGui.QWidget, main_ui.Ui_Form):
     def update_clock(self):
         self.tanggal.setText(time.strftime("%d %b %Y"))
         self.jam.setText(time.strftime("%H:%M:%S"))
+
+    def buka_pintu(self, karyawan=None):
+        if karyawan:
+            nama = karyawan[1].upper()
+        else:
+            nama = ""
+
+        message = "SILAKAN MASUK " + nama
+        self.info.setText(message)
+        logger.info(message)
+
+        GPIO.output(config["gpio_pin"]["relay"], 1)
+        timeout = False
+        alarm = False
+        start_time = datetime.now()
+
+        if config["features"]["sensor_pintu"]["active"]:
+            while GPIO.input(config["gpio_pin"]["sensor_pintu"]) == config["features"]["sensor_pintu"]["default_state"]:
+                time.sleep(0.2)
+                if secs(start_time) > config["timer"]["timeout"]:
+                    timeout = True
+                    break
+
+        if timeout:
+            GPIO.output(config["gpio_pin"]["relay"], 0)
+            self.info.setText("WAKTU HABIS")
+            time.sleep(2)
+            self.info.setText("TEMPELKAN JARI ATAU KARTU ANDA")
+            return
+
+        if karyawan:
+            cur = db.cursor()
+            cur.execute("INSERT INTO `log` (`karyawan_id`) VALUES (?)", (karyawan[0],))
+            cur.close()
+            db.commit()
+
+        if nama == "":
+            nama = "MANUAL"
+
+        data = {'access_by': nama, 'status': 0}
+
+        try:
+            r = requests.post(config["api_url"] + "logPintu", data=data)
+        except Exception as e:
+            logger.warning("GAGAL mengirim log ke server")
+
+        if r.status_code == requests.codes.ok:
+            logger.info("SUKSES mengirim log ke server")
+        else:
+            logger.warning("GAGAL mengirim log ke server")
+
+        open_time = datetime.now()
+
+        if config["features"]["sensor_pintu"]["active"]:
+            while GPIO.input(config["gpio_pin"]["sensor_pintu"]) != config["features"]["sensor_pintu"]["default_state"]:
+                if secs(open_time) < config["timer"]["open_duration"]:
+                    time.sleep(0.2)
+                    continue
+                # only execute once
+                if not alarm:
+                    GPIO.output(config["gpio_pin"]["alarm"], 1)
+                    self.info.setText("MOHON TUTUP PINTU")
+                    alarm = True
+
+                time.sleep(0.2)
+
+        else:
+            time.sleep(config["timer"]["open_duration"])
+
+        # turn off alarm
+        if alarm:
+            GPIO.output(config["gpio_pin"]["alarm"], 0)
+        # tutup pintu
+        GPIO.output(config["gpio_pin"]["relay"], 0)
+
+        # simpan log ke server (tutup)
+        if nama == "":
+            nama = "MANUAL"
+        data = {'access_by': nama, 'status': 1}
+
+        try:
+            r = requests.post(config["api_url"] + "logPintu", data=data)
+        except Exception as e:
+            logger.warning("GAGAL mengirim log ke server")
+
+        if r.status_code == requests.codes.ok:
+            logger.info("SUKSES mengirim log ke server")
+        else:
+            logger.warning("GAGAL mengirim log ke server")
+
+        self.info.setText("TEMPELKAN JARI ATAU KARTU ANDA")
+
+
+class ScanCardThread(QtCore.QThread):
+    def __init__(self):
+        super(self.__class__, self).__init__()
+        self.exiting = False
+
+    def __del__(self):
+        self.exiting = True
+        self.wait()
+
+    def run(self):
+        while not self.exiting:
+            self.emit(QtCore.SIGNAL('updateInfo'), "TEMPELKAN JARI ATAU KARTU ANDA")
+            try:
+                uid = pn532.read_passive_target()
+            except Exception as e:
+                self.emit(QtCore.SIGNAL('updateInfo'), "GAGAL MEMBACA KARTU")
+                time.sleep(2)
+                continue
+
+            if uid is "no_card":
+                continue
+
+            card_id = str(binascii.hexlify(uid))
+
+            cur = db.cursor()
+            cur.execute("SELECT * FROM karyawan WHERE `card_id` = ?", (card_id,))
+            result = cur.fetchone()
+            cur.close()
+
+            if result:
+                ui.buka_pintu(result)
+            else:
+                self.emit(QtCore.SIGNAL('updateInfo'), "KARTU TIDAK TERDAFTAR")
+                time.sleep(2)
 
 
 class ScanFingerThread(QtCore.QThread):
@@ -54,629 +196,781 @@ class ScanFingerThread(QtCore.QThread):
         self.exiting = True
         self.wait()
 
-    def read_card(self):
-        start_time = datetime.now()
-
-        while not self.exiting:
-            if secs(start_time) > 10:
-                logger.debug("Timeout...")
-                self.emit(QtCore.SIGNAL('updateInfo'), "WAKTU HABIS")
-                time.sleep(2)
-                return False
-
-            uid = nfc.pn532.read_passive_target()
-            if uid is "no_card":
-                continue
-
-            return str(binascii.hexlify(uid))
-
-    # buka manual masih sala sepertinya
-    def buka_manual(self):
-        logger.info("Buka manual")
-        self.emit(QtCore.SIGNAL('updateInfo'), "SILAKAN MASUK")
-        GPIO.output(config["gpio_pin"]["relay"], 1)
-        terlalu_lama = False
-        start_time = datetime.now()
-
-        if config["features"]["sensor_pintu"]:
-            while GPIO.input(config["gpio_pin"]["sensor_pintu"]):
-                time.sleep(0.2)
-                if secs(start_time) > 3:
-                    terlalu_lama = True
-                    break
-
-        # ga jadi dibuka
-        if terlalu_lama:
-            logger.debug("Ga jadi buka")
-            GPIO.output(config["gpio_pin"]["relay"], 0)
-            self.emit(QtCore.SIGNAL('updateInfo'), "TEMPELKAN JARI ANDA")
-            return
-
-        # jadi dibuka
-        try:
-            data = {'ip_address': config["ip_address"], 'access_by': 'manual', 'status': 0}
-            r = requests.post(config["api_url"], data=data)
-        except Exception as e:
-            pass
-
-        # kasih jeda 5 detik biar masuk
-        time.sleep(config["timer"]["open_duration"])
-
-        if config["features"]["sensor_pintu"]:
-            while not GPIO.input(config["gpio_pin"]["sensor_pintu"]):
-                logger.warning("Pintu terbuka")
-                self.emit(QtCore.SIGNAL('updateInfo'), "MOHON TUTUP PINTU")
-                time.sleep(1)
-
-        GPIO.output(config["gpio_pin"]["relay"], 0)
-
-        try:
-            data = {'ip_address': config["ip_address"], 'access_by': 'manual', 'status': 1}
-            r = requests.post(config["api_url"], data=data)
-        except Exception as e:
-            pass
-
-        logger.debug("Pintu tertutup...")
-        self.emit(QtCore.SIGNAL('updateInfo'), "TEMPELKAN JARI ANDA")
-
     def read_image(self):
-        while not fp.fp.readImage():
-            # jika pintu tertutup dan ada yang neken saklar buka manual
-            if GPIO.input(config["gpio_pin"]["sensor_pintu"]) and not GPIO.input(config["gpio_pin"]["saklar_manual"]):
-                self.buka_manual()
-
-            else:
-                time.sleep(0.5)
+        while not fp.readImage():
+            time.sleep(0.2)
 
     def run(self):
-        self.emit(QtCore.SIGNAL('updateInfo'), "MOHON TUNGGU...")
-        time.sleep(3)
         while not self.exiting:
-            self.emit(QtCore.SIGNAL('updateInfo'), "TEMPELKAN JARI ANDA")
-
+            self.emit(QtCore.SIGNAL('updateInfo'), "TEMPELKAN JARI ATAU KARTU ANDA")
             try:
                 self.read_image()
             except Exception as e:
                 continue
 
-            fp.fp.convertImage(0x01)
-            result = fp.fp.searchTemplate()
+            fp.convertImage(0x01)
+            result = fp.searchTemplate()
             fp_id = result[0]
+            template = json.dumps(fp.downloadCharacteristics(0x01))
+
+            # todo: login bandingin record database, baru create template kalau belum ada
 
             if fp_id == -1:
-                logger.info("Sidik jari tidak ditemukan")
                 self.emit(QtCore.SIGNAL('updateInfo'), "SIDIK JARI TIDAK DITEMUKAN")
                 time.sleep(2)
                 continue
 
-            logger.info("Sidik jari ditemukan")
-            if use_nfc:
-                self.emit(QtCore.SIGNAL('updateInfo'), "TEMPELKAN KARTU")
-                try:
-                    card_id = self.read_card()
-                except Exception as e:
-                    continue
-
-                if not card_id:
-                    continue
-
-            cur = db_con.cursor()
-
-            if use_nfc:
-                cur.execute("SELECT * FROM karyawan WHERE `fp_id` = ? AND `card_id` = ?", (fp_id, card_id))
-            else:
-                cur.execute("SELECT * FROM karyawan WHERE `fp_id` = ?", (fp_id,))
-
+            cur = db.cursor()
+            cur.execute("SELECT * FROM karyawan WHERE `fp_id` = ?", (fp_id,))
             result = cur.fetchone()
             cur.close()
 
             if not result:
-                if use_nfc:
-                    logger.info("Sidik jari dan kartu tidak cocok")
-                    self.emit(QtCore.SIGNAL('updateInfo'), "SIDIK JARI DAN KARTU TIDAK COCOK")
-                else:
-                    logger.info("Sidik jari tidak terdaftar")
-                    self.emit(QtCore.SIGNAL('updateInfo'), "ANDA TIDAK TERDAFTAR")
+                self.emit(QtCore.SIGNAL('updateInfo'), "ANDA TIDAK TERDAFTAR")
                 time.sleep(2)
                 continue
 
-            logger.info("ACCESS GRANTED!")
-            self.emit(QtCore.SIGNAL('updateInfo'), "SILAKAN MASUK, " + result[1].upper())
-            GPIO.output(config["gpio_pin"]["relay"], 1)
-            terlalu_lama = False
-            start_time = datetime.now()
+            ui.buka_pintu(result)
 
-            if config["features"]["sensor_pintu"]:
-                while GPIO.input(config["gpio_pin"]["sensor_pintu"]):
-                    time.sleep(0.2)
-                    if secs(start_time) > 3:
-                        terlalu_lama = True
-                        break
 
-            if terlalu_lama:
-                logger.info("Timeout")
-                GPIO.output(config["gpio_pin"]["relay"], 0)
-                self.emit(QtCore.SIGNAL('updateInfo'), "WAKTU HABIS")
-                time.sleep(2)
+class OpenManualThread(QtCore.QThread):
+    def __init__(self):
+        super(self.__class__, self).__init__()
+        self.exiting = False
+
+    def __del__(self):
+        self.exiting = True
+        self.wait()
+
+    def run(self):
+        while not self.exiting:
+            if GPIO.input(config["gpio_pin"]["sensor_pintu"]) == config["features"]["sensor_pintu"]["default_state"] and not GPIO.input(config["gpio_pin"]["saklar_manual"]):
+                logger.info("Open by switch")
+                ui.buka_pintu()
+            else:
+                time.sleep(0.2)
+
+
+class Console():
+    def __init__(self):
+        pass
+
+    def daftar(self):
+        if not use_nfc and not use_fp:
+            print "NFC reader dan Fingerprint reader tidak ditemukan!"
+            return
+
+        nama = raw_input("Nama: ")
+        jabatan = raw_input("Jabatan: ")
+        card_id = '***'
+        fp_id = '***'
+        template = None
+        daftar_apa = 0
+        daftar_sidik_jari = 1
+        daftar_kartu = 2
+        daftar_semua = 3
+
+        if not nama or not jabatan:
+            print "Nama dan jabatan harus diisi. Silakan ulangi kembali"
+            return
+
+        while daftar_apa not in range(1,4):
+            daftar_apa = raw_input("1 = Daftar Sidik Jari, 2 = Daftar Kartu NFC, 3 = Daftar Semua: ")
+            try:
+                daftar_apa = int(daftar_apa)
+            except Exception as e:
                 continue
 
-            cur = db_con.cursor()
-            cur.execute("INSERT INTO `log` (`karyawan_id`) VALUES (?)", (result[0],))
-            cur.close()
-            db_con.commit()
+        if use_fp and (daftar_apa == daftar_sidik_jari or daftar_apa == daftar_semua):
+            print('Tempelkan jari Anda...')
 
-            # simpan log ke server (buka)
+            while not fp.readImage():
+                time.sleep(0.2)
+
             try:
-                data = {'ip_address': config["ip_address"], 'access_by': result[1], 'status': 0}
-                r = requests.post(config["api_url"], data=data)
+                fp.convertImage(0x01)
             except Exception as e:
-                pass
+                print "Error convert image on buffer 0x01. " + str(e)
+                break
 
-            # kasih jeda 5 detik biar masuk
-            time.sleep(config["timer"]["open_duration"])
-
-            if config["features"]["sensor_pintu"]:
-                while not GPIO.input(config["gpio_pin"]["sensor_pintu"]):
-                    logger.info("Pintu terbuka")
-                    self.emit(QtCore.SIGNAL('updateInfo'), "MOHON TUTUP PINTU")
-                    time.sleep(1)
-
-            logger.info("Pintu tertutup")
-            GPIO.output(config["gpio_pin"]["relay"], 0)
-
-            # simpan log ke server (tutup)
             try:
-                data = {'ip_address': config["ip_address"], 'access_by': result[1], 'status': 1}
-                r = requests.post(config["api_url"], data=data)
+                result = fp.searchTemplate()
             except Exception as e:
-                pass
+                print "Error search template. " + str(e)
+                break
 
-class FP():
-    def __init__(self, device):
-        self.device = device
+            positionNumber = result[0]
 
-        try:
-            self.fp = PyFingerprint(self.device, 57600, 0xFFFFFFFF, 0x00000000)
+            if positionNumber >= 0:
+                print('Jari sudah terdaftar. Silakan ulangi kembali')
+                break
 
-            if not self.fp.verifyPassword():
-                print 'Password fingerprint salah!'
-                exit(0)
-
-        except Exception as e:
-            logger.error("Gagal menginisialisasi fingerprint!")
-            logger.error(str(e))
-            exit(0)
-
-    def scan(self):
-        while not self.fp.readImage():
-            time.sleep(1)
-
-        self.fp.convertImage(0x01)
-        result = self.fp.searchTemplate()
-        fp_id = result[0]
-
-        if fp_id >= 0:
-            logger.info("Sidik jari ditemukan pada #" + str(fp_id))
-            return fp_id
-
-        else:
-            logger.info("Jari tidak terdaftar")
-            return -1
-
-    def delete(self, position):
-        if self.fp.deleteTemplate(position):
-            logger.info("Template sidik jari berhasil dihapus")
-            print "Template sidik jari berhasil dihapus"
-            return True
-
-        else:
-            logger.warning("Template sidik jari #" + position + " gagal dihapus")
-            print "Template sidik jari #" + position + " gagal dihapus"
-            return False
-
-    def clear_database(self):
-        logger.info("Clearing template...")
-        self.fp.clearDatabase();
-        logger.info("Template cleared")
-
-    def check_memory(self):
-        print('Template terpakai saat ini: ' + str(self.fp.getTemplateCount()) + '/' + str(self.fp.getStorageCapacity()))
-
-    def enroll(self):
-        ## Informasi fingerprint
-        print('Template terpakai saat ini: ' + str(self.fp.getTemplateCount()) + '/' + str(self.fp.getStorageCapacity()))
-        ## Enroll jari
-        print('Tempelkan jari Anda...')
-
-        while not self.fp.readImage():
-            time.sleep(0.5)
-
-        self.fp.convertImage(0x01)
-        result = self.fp.searchTemplate()
-        positionNumber = result[0]
-
-        if positionNumber >= 0:
-            print('Jari sudah terdaftar pada #' + str(positionNumber)) + ". Silakan ulangi kembali"
-            return -1
-
-        else:
             print('Angkat jari...')
             time.sleep(2)
 
             print('Tempelkan jari yang sama...')
-            while not self.fp.readImage():
-                time.sleep(0.5)
+            while not fp.readImage():
+                time.sleep(0.2)
 
-            self.fp.convertImage(0x02)
+            try:
+                fp.convertImage(0x02)
+            except Exception as e:
+                print "Error convert image on buffer 0x02. " + str(e)
+                break
 
-            ## Bandingkan jari
-            if self.fp.compareCharacteristics() == 0:
+            if not fp.compareCharacteristics():
                 print "Sidik jari tidak sama. Silakan ulangi kembali"
-                return -1
+                break
 
-            else:
-                ## Buat template
-                self.fp.createTemplate()
-                ## Simpan template
-                fp_id = self.fp.storeTemplate()
-                # print('Sidik jari berhasil di daftarkan!')
-                # print('Template baru pada #' + str(fp_id))
-                # untuk disimpan di database
-                return fp_id
+            try:
+                fp.createTemplate()
+            except Exception as e:
+                print "Failed to create template. " + str(e)
+                break
 
-class NFC():
-    def __init__(self, device):
-        self.device = device
-        self.pn532 = PN532.PN532(self.device, 115200)
-        self.pn532.begin()
-        self.pn532.SAM_configuration()
-        # Get the firmware version from the chip and print(it out.)
-        ic, ver, rev, support = self.pn532.get_firmware_version()
+            try:
+                fp_id = fp.storeTemplate()
+            except Exception as e:
+                print "Failed to store template." + str(e)
+                break
 
-    def scan(self):
-        while True:
-            uid = self.pn532.read_passive_target()
-            if uid is "no_card":
+            try:
+                fp.loadTemplate(fp_id, 0x01)
+            except Exception as e:
+                print "Failed to load template." + str(e)
+                break
+
+            try:
+                template = json.dumps(fp.downloadCharacteristics(0x01))
+            except Exception as e:
+                print "Failed to download template. Template will be generated next time."
+                template = None
+
+        if use_nfc and (daftar_apa == daftar_kartu or daftar_apa == daftar_semua):
+            print "Tempelkan kartu..."
+
+            while True:
+                try:
+                    uid = pn532.read_passive_target()
+                except Exception as e:
+                    continue
+                if uid is "no_card":
+                    continue
+
+                card_id = str(binascii.hexlify(uid))
+                break
+
+            cur = db.cursor()
+            cur.execute("SELECT * FROM `karyawan` WHERE card_id = ?", (card_id,))
+            result = cur.fetchone()
+            cur.close()
+
+            if result:
+                print "Kartu sudah terdaftar atas nama " + result[1]
+
+                try:
+                    fp.deleteTemplate(fp_id)
+                except Exception as e:
+                    print "Failed to delete template. " + str(e)
+
+                break
+
+        if fp_id == "***" and card_id == "***":
+            print "Pendaftaran GAGAL. Gagal membaca sidik jari dan kartu."
+            return
+
+        UUID = str(uuid.uuid4())
+
+        try:
+            cur = db.cursor()
+            cur.execute(
+                "INSERT INTO `karyawan` (`nama`, `jabatan`, `fp_id`, `card_id`, `template`, `uuid`) VALUES (?, ?, ?, ?, ?, ?)",
+                (nama, jabatan, fp_id, card_id, template, UUID)
+            )
+            cur.close()
+            db.commit()
+        except Exception as e:
+            print "Pendaftaran GAGAL! " + str(e)
+            return
+
+        print "Pendaftaran BERHASIL!"
+        data = {
+            "nama": nama,
+            "jabatan": jabatan,
+            "fp_id": fp_id,
+            "card_id": card_id,
+            "template": template,
+            "uuid": UUID
+        }
+        print "Syncing staff data to server..."
+
+        try:
+            r = requests.post(config["api_url"] + "staff", data=data)
+        except Exception as e:
+            print "Sync staff data FAILED!" + str(e)
+            return
+
+        if r.status_code == requests.codes.ok:
+            print "Sync staff data OK!"
+        else:
+            print "Sync staff data FAILED!" + r.text
+
+    def list(self):
+        cur = db.cursor()
+        cur.execute("SELECT `id`, `nama`, `jabatan`, `fp_id`, `card_id`, datetime(`waktu_daftar`, 'localtime') FROM `karyawan` ORDER BY `nama` ASC")
+        result = cur.fetchall()
+        cur.close()
+
+        data = [["ID", "NAMA", "JABATAN", "FINGERPRINT ID", "CARD ID", "WAKTU DAFTAR"]]
+
+        for row, item in enumerate(result):
+            data.append([str(item[0]), item[1], item[2], item[3], item[4], item[5]])
+
+        table = AsciiTable(data)
+        print table.table
+
+    def get_data_from_server(self):
+        try:
+            r = requests.get(config["api_url"] + "staff")
+        except Exception as e:
+            raise Exception("Koneksi ke server gagal. " + str(e))
+            return False
+
+        if r.status_code == requests.codes.ok:
+            try:
+                return r.json()
+            except Exception as e:
+                raise Exception("Invalid JSON. " + str(e))
+                return False
+        else:
+            raise Exception("Koneksi ke server error. " + str(r.text))
+            return False
+
+    def list_server(self):
+        data = [["ID", "NAMA", "JABATAN", "CARD ID", "WAKTU DAFTAR"]]
+
+        try:
+            staff = self.get_data_from_server()
+        except Exception as e:
+            print str(e)
+            return
+
+        for row, item in enumerate(staff):
+            data.append([int(item["id"]), item["nama"], item["jabatan"], item["card_id"], item["created_at"]])
+
+        table = AsciiTable(data)
+        print table.table
+
+    def assign(self):
+        data = [["ID", "NAMA", "JABATAN", "CARD ID", "WAKTU DAFTAR"]]
+
+        cur = db.cursor()
+        cur.execute("SELECT `uuid` FROM `karyawan`")
+        results = cur.fetchall()
+        cur.close()
+
+        uuids = []
+        for row, item enumerate(results)
+            uuids.append(item[0])
+
+        try:
+            staff = self.get_data_from_server()
+        except Exception as e:
+            print str(e)
+            return
+
+        for row, item in enumerate(staff):
+            if item["uuid"] in uuids:
+                continue
+            data.append([int(item["id"]), item["nama"], item["jabatan"], item["card_id"], item["created_at"]])
+
+        table = AsciiTable(data)
+        print table.table
+
+        staff_id = raw_input("Masukkan ID staff yang akan di assign: ")
+        fp_id = "***"
+
+        try:
+            staff_id = int(staff_id)
+        except Exception as e:
+            print "ID yang anda masukkan salah " + str(e)
+            return
+
+        try:
+            r = requests.get(config["api_url"] + "staff/" + str(staff_id))
+        except Exception as e:
+            print "Koneksi ke server GAGAL. " + str(e)
+            return
+
+        try:
+            staff = r.json()
+        except Exception as e:
+            print "Invalid JSON. " + str(e)
+            return
+
+        cur = db.cursor()
+        cur.execute("SELECT `nama` FROM `karyawan` WHERE `uuid` = ?", (staff["uuid"],))
+        result = cur.fetchone()
+
+        if result:
+            print result[0] + " sudah terdaftar."
+            cur.close()
+            return
+
+        if staff["template"] == "":
+            print "Template sidik jari tidak ditemukan."
+
+        else:
+            print "Saving template to fingerprint reader..."
+
+            try:
+                template = json.loads(staff["template"])
+            except Exception as e:
+                print "Template error. Invalid JSON"
+                return
+
+            try:
+                fp.uploadCharacteristics(0x01, template)
+            except Exception as e:
+                print "Failed to upload template to fingerprint reader. " + str(e)
+                return
+
+            try:
+                fp_id = fp.storeTemplate()
+            except Exception as e:
+                print "Failed to store template to fingerprint reader. " + str(e)
+                return
+
+            print "Fingerprint template saved to #" + str(fp_id)
+
+        print "Saving to local database..."
+
+        try:
+            cur.execute(
+                "INSERT INTO `karyawan` (`nama`, `jabatan`, `fp_id`, `card_id`, `template`, `uuid`) VALUES (?, ?, ?, ?, ?, ?)",
+                (staff["nama"], staff["jabatan"], fp_id, staff["card_id"], staff["template"], staff["uuid"])
+            )
+            cur.close()
+            db.commit()
+        except Exception as e:
+            print "Saving to local database FAILED! " + str(e)
+            print "Deleting template... "
+            try:
+                fp.deleteTemplate(fp_id)
+            except Exception as e:
+                print "Failed to delete template. Please delete it manually. " + str(e)
+
+        print "Saving to local database SUCCESS!"
+
+    def log(self):
+        cur = db.cursor()
+        cur.execute("SELECT datetime(`log`.`waktu`, 'localtime'), `karyawan`.`nama`, `karyawan`.`jabatan` FROM `log` LEFT JOIN `karyawan` ON `karyawan`.`id` = `log`.`karyawan_id` ORDER BY `log`.`waktu` ASC")
+        result = cur.fetchall()
+        cur.close()
+
+        data = [["WAKTU MASUK", "NAMA", "JABATAN"]]
+
+        for row, item in enumerate(result):
+            data.append([str(item[0]), item[1], item[2]])
+
+        table = AsciiTable(data)
+        print table.table
+
+    def clear_database(self):
+        confirm = raw_input("Anda yakin (y/N)? ")
+        if confirm != "y":
+            return
+
+        cur = db.cursor()
+        cur.execute("DELETE FROM `karyawan`")
+        cur.execute("DELETE FROM `log`")
+        cur.close()
+        db.commit()
+
+        try:
+            fp.clearDatabase()
+        except Exception as e:
+            print "Failed to clear database. " + str(e)
+
+    def clear_log(self):
+        confirm = raw_input("Anda yakin (y/N)? ")
+        if confirm != "y":
+            return
+
+        cur = db.cursor()
+        cur.execute("DELETE FROM `log`")
+        cur.close()
+        db.commit()
+
+    def hapus(self):
+        self.list()
+        id_karyawan = raw_input("Masukkan ID yang akan Anda hapus: ")
+
+        try:
+            id_karyawan = int(id_karyawan)
+        except Exception as e:
+            print "ID yang Anda masukkan salah. " + str(e)
+            return
+
+        cur = db.cursor()
+        cur.execute("SELECT `id`, `nama`, `jabatan`, `fp_id`, `card_id`, `waktu_daftar`, `uuid` FROM `karyawan` WHERE id = ?", (id_karyawan,))
+        result = cur.fetchone()
+        cur.close()
+
+        if not result:
+            print "ID karyawan tidak ditemukan."
+            return
+
+        data = [
+            ["ID", "NAMA", "JABATAN", "FINGERPRINT ID", "CARD ID", "WAKTU DAFTAR"],
+            [str(result[0]), result[1], result[2], result[3], result[4], result[5]]
+        ]
+
+        table = AsciiTable(data)
+        print table.table
+
+        confirm = raw_input("Anda yakin akan menghapus karyawan ini (y/n)?")
+        if confirm != "y":
+            return
+
+        cur = db.cursor()
+        cur.execute("DELETE FROM `karyawan` WHERE id = ?", (id_karyawan,))
+        cur.close()
+        db.commit()
+        print "Data karyawan berhasil dihapus"
+
+        try:
+            fp.deleteTemplate(int(result[3]))
+        except Exception as e:
+            print "Gagal menghapus template sidik jari. " + str(e)
+
+        # masih belum bisa (apakah menghapus di server & seluruh access door?)
+        print "Menghapus data di server untuk " + result[1] + "..."
+        data = {"uuid": result[6]}
+        try:
+            r = requests.post(config["api_url"] + "staff", data=data)
+        except Exception as e:
+            print "GAGAL menghapus data di server. " + str(e)
+
+        if r.status_code == requests.codes.ok:
+            print "BERHASIL menghapus data di server"
+        else:
+            print "GAGAL menghapus data di server. " + r.status_code
+
+    def save_template(self):
+        cur = db.cursor()
+        cur.execute("SELECT * FROM `karyawan` WHERE `template` IS NULL")
+        results = cur.fetchall()
+
+        for row, item in enumerate(results):
+            print "Loading template from fingerprint reader for " + item[1] + " ..."
+
+            try:
+                fp.loadTemplate(int(item[3]), 0x01)
+            except Exception as e:
+                print "Failed to load template. " + str(e)
                 continue
 
-            return str(binascii.hexlify(uid))
+            try:
+                template = json.dumps(fp.downloadCharacteristics(0x01))
+                pass
+            except Exception as e:
+                print "Failed to download template. " + str(e)
+                continue
+
+            cur.execute(
+                "UPDATE `karyawan` SET `template` = ? WHERE `id` = ?",
+                (template, item[3])
+            )
+            print "Template saved to database!"
+
+        cur.close()
+        db.commit()
+
+    def generate_uuid(self):
+        cur = db.cursor()
+        cur.execute("SELECT `id`, `nama` FROM `karyawan` WHERE `uuid` IS NULL")
+        results = cur.fetchall()
+
+        for row, item in enumerate(results):
+            print "Generating UUID for " + item[1] + " ..."
+            UUID = str(uuid.uuid4())
+            cur.execute(
+                "UPDATE `karyawan` SET `uuid` = ? WHERE `id` = ?",
+                (UUID, item[0])
+            )
+            print "UUID saved to database!"
+
+        cur.close()
+        db.commit()
+        print "Generate UUID completed!"
+
+    def sync_user(self):
+        confirm = raw_input("Anda yakin (y/n)? ")
+
+        if confirm != 'y':
+            return
+
+        self.generate_uuid()
+        self.save_template()
+
+        cur = db.cursor()
+        cur.execute("SELECT `id`, `nama`, `jabatan`, `fp_id`, `card_id`, `template`, `uuid` FROM `karyawan`")
+        results = cur.fetchall()
+        cur.close()
+
+        for row, item in enumerate(results):
+            data = {
+                "nama": item[1],
+                "jabatan": item[2],
+                "fp_id": item[3],
+                "card_id": item[4],
+                "template": item[5],
+                "uuid": item[6]
+            }
+            print "Syncing " + item[1] + "..."
+
+            try:
+                r = requests.post(config["api_url"] + "staff", data=data)
+            except Exception as e:
+                print "Sync staff data FAILED!" + str(e)
+                continue
+
+            if r.status_code == requests.codes.ok:
+                try:
+                    res = r.json()
+                    print "Sync " + res["nama"] + " OK!"
+                except Exception as e:
+                    print "Sync staff data FAILED!" + str(e)
+            else:
+                print "Sync staff data FAILED!" + r.text
+
+    def buka_pintu(self):
+        if GPIO.input(config["gpio_pin"]["sensor_pintu"]) != config["features"]["sensor_pintu"]["default_state"]:
+            print "Pintu sudah terbuka"
+        else:
+            print "Silakan masuk..."
+            GPIO.output(config["gpio_pin"]["relay"], 1)
+            time.sleep(config["timer"]["open_duration"])
+            GPIO.output(config["gpio_pin"]["relay"], 0)
+
+    def check_memory_fp(self):
+        print str(fp.getTemplateCount()) + '/' + str(fp.getStorageCapacity())
+
+    def status_pintu(self):
+        if GPIO.input(config["gpio_pin"]["sensor_pintu"]) == config["features"]["sensor_pintu"]["default_state"]:
+            print "TERTUTUP"
+        else:
+            print "TERBUKA"
+
+    def help(self):
+        data = [
+            ['PERINTAH', 'KETERANGAN'],
+            ['?', 'Menampilkan pesan ini'],
+            ['list', 'Menampilkan daftar semua staff di access door'],
+            ['list server', 'Menampilkan daftar semua staff di sever'],
+            ['daftar', 'Mendaftarkan staff baru'],
+            ['hapus', 'Menghapus staff'],
+            ['log', 'Menampilkan log akses pintu'],
+            ['clear log', 'Menghapus log'],
+            ['clear database', 'Menghapus data staff dan log'],
+            ['check memory fp', 'Check memory sensor finger print'],
+            ['buka pintu', 'Buka pintu'],
+            ['status pintu', 'Status pintu'],
+            ['run', 'Menjalankan program akses pintu GUI'],
+            ['save template', 'Menyimpan template sidik jari ke database'],
+            ['generate uuid', 'Generate UUID'],
+            ['sync user', 'Sync user data ke server'],
+            ['assing', 'Assign user from server to access door'],
+            ['exit', 'Keluar dari progam ini'],
+            ['logout', 'Keluar dari program CLI']
+        ]
+
+        table = AsciiTable(data)
+        print table.table
+
+    def run(self):
+        try:
+            while True:
+                cmd = raw_input("access_door> ")
+                if cmd == "daftar":
+                    self.daftar()
+                elif cmd == "list":
+                    self.list()
+                elif cmd == "log":
+                    self.log()
+                elif cmd == "clear database":
+                    self.clear_database()
+                elif cmd == "clear log":
+                    self.clear_log()
+                elif cmd == "hapus":
+                    self.hapus()
+                elif cmd == "check memory fp":
+                    self.check_memory_fp()
+                elif cmd == "buka pintu":
+                    self.buka_pintu()
+                elif cmd == "status pintu":
+                    self.status_pintu()
+                elif cmd == "help" or cmd == "?":
+                    self.help()
+                elif cmd == "logout":
+                    print "Bye"
+                    break
+                elif cmd == "exit" or cmd == "quit":
+                    print "Bye"
+                    exit()
+                elif cmd == "run":
+                    app = QtGui.QApplication(sys.argv)
+                    ui = Main()
+                    sys.exit(app.exec_())
+                elif cmd == "save template":
+                    self.save_template()
+                elif cmd == "generate uuid":
+                    self.generate_uuid()
+                elif cmd == "sync user":
+                    self.sync_user()
+                elif cmd == "list server":
+                    self.list_server()
+                elif cmd == "assign":
+                    self.assign()
+                elif cmd.strip():
+                    print "Perintah tidak dikenal. Ketik '?' untuk bantuan."
+                else:
+                    pass
+
+        except KeyboardInterrupt:
+            print("Bye");
+            exit(0)
 
 def secs(start_time):
     dt = datetime.now() - start_time
     return dt.seconds
 
+def dict_factory(cursor, row):
+    d = {}
+    for idx, col in enumerate(cursor.description):
+        d[col[0]] = row[idx]
+    return d
 
 if __name__ == "__main__":
+    log_file_path = os.path.join(os.path.dirname(__file__), 'access_door.log')
+    config_file_path = os.path.join(os.path.dirname(__file__), 'config.json')
+
     logger = logging.getLogger(__name__)
     logger.setLevel(logging.DEBUG)
-    handler = logging.FileHandler('access_door.log')
+    handler = logging.handlers.RotatingFileHandler(log_file_path, maxBytes=1024000, backupCount=100)
     handler.setLevel(logging.DEBUG)
     formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
     handler.setFormatter(formatter)
     logger.addHandler(handler)
 
-    config_file_path = os.path.join(os.path.dirname(__file__), 'config.json')
+    logger.debug("Starting application...")
 
     try:
+        logger.debug("Reading config file...")
         with open(config_file_path) as config_file:
             config = json.load(config_file)
     except Exception as e:
-        print "Gagal membuka file konfigurasi (config.json)"
-        exit()
-
-    if config["database"]["driver"] == "mysql":
-        con = config["database"]
-        db_con = MySQLdb.connect(
-            host=con["host"],
-            user=con["user"],
-            passwd=con["pass"],
-            db=con["name"]
-        )
-
-    elif config["database"]["driver"] == "sqlite":
-        con = config["database"]
-        db_con = sqlite3.connect(con["name"], check_same_thread = False)
-
-        # populate db
-        db_con.execute("CREATE TABLE IF NOT EXISTS `karyawan` ( \
-            `id` INTEGER PRIMARY KEY AUTOINCREMENT, \
-            `nama` varchar(30) NOT NULL, \
-            `jabatan` varchar(30) NOT NULL, \
-            `fp_id` varchar(20) NOT NULL, \
-            `card_id` varchar(20) NULL, \
-            `waktu_daftar` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP)");
-
-        db_con.execute("CREATE TABLE IF NOT EXISTS `log` ( \
-            `id` INTEGER PRIMARY KEY AUTOINCREMENT, \
-            `karyawan_id` int(11) NOT NULL, \
-            `waktu` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP)")
-
-    else:
-        logger.error("Koneksi database tidak dikenal (mysql/sqlite)")
+        message = "Gagal membuka file konfigurasi (config.json)"
+        logger.error(message)
+        print message
         exit()
 
     use_nfc = False
+    use_fp = False
 
     try:
-        logger.debug("Inisiasi sensor fingerprint")
-        fp = FP(config["device"]["fp"])
+        logger.debug("Initializing fingerprint reader...")
+        fp = PyFingerprint(config["device"]["fp"], 57600, 0xFFFFFFFF, 0x00000000)
+        if not fp.verifyPassword():
+            message = 'Password fingerprint salah!'
+            logger.error(message)
+            print message
+
+        logger.debug("Fingerprint reader OK!")
+        use_fp = True
     except Exception as e:
-        logger.error("Sensor fingerprint tidak ditemukan")
-        exit()
+        message = 'Gagal menginisialisasi fingerprint!' + str(e)
+        logger.error(message)
+        print message
 
     try:
-        logger.debug("Inisiasi NFC Reader")
-        nfc = NFC(config["device"]["nfc"])
+        logger.debug("Initializing NFC Reader...")
+        pn532 = PN532.PN532(config["device"]["nfc"], 115200)
+        pn532.begin()
+        pn532.SAM_configuration()
+        logger.debug("NFC Reader OK!")
         use_nfc = True
     except Exception as e:
-        logger.info("Sensor NFC tidak ditemukan")
+        message = "NFC Reader tidak ditemukan"
+        logger.error(message)
+        print message
 
-    # inisiasi GPIO pada raspberry
-    logger.debug("Inisiasi GPIO")
+    if not use_fp and not use_nfc:
+        message = "Fingerprint reader dan NFC reader tidak ditemukan"
+        logger.error(message)
+        logger.info("Exit")
+        print message
+        exit()
+
+    if config["db"]["driver"] == "mysql":
+        try:
+            db = MySQLdb.connect(
+                host=config["db"]["host"],
+                user=config["db"]["user"],
+                passwd=config["db"]["pass"],
+                db=config["db"]["name"]
+            )
+            db.close()
+        except Exception as e:
+            message = "Gagal melakukan koneksi ke database. Cek konfigurasi database di config.json"
+            logger.error(message)
+            print message
+            exit()
+
+    elif config["db"]["driver"] == "sqlite":
+        logger.debug("Connecting to database...")
+        db = sqlite3.connect(config["db"]["name"], check_same_thread=False)
+        logger.debug("Creating database schema...")
+
+        db.execute("CREATE TABLE IF NOT EXISTS `karyawan` ( \
+            `id` INTEGER PRIMARY KEY AUTOINCREMENT, \
+            `nama` varchar(30) NOT NULL, \
+            `jabatan` varchar(30) NOT NULL, \
+            `fp_id1` varchar(20) NULL, \
+            `fp_id2` varchar(20) NULL, \
+            `card_id` varchar(20) NULL, \
+            `template1` text NULL, \
+            `template2` text NULL, \
+            `uuid` varchar(50) NULL, \
+            `active` boolean default 1, \
+            `waktu_daftar` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP)");
+
+        db.execute("CREATE TABLE IF NOT EXISTS `log` ( \
+            `id` INTEGER PRIMARY KEY AUTOINCREMENT, \
+            `karyawan_id` int(11) NULL, \
+            `waktu` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP)")
+
+    else:
+        message = "Koneksi database tidak dikenal (mysql/sqlite)"
+        logger.error(message)
+        print message
+        exit()
+
     GPIO.setmode(GPIO.BOARD)
     GPIO.setwarnings(False)
     GPIO.setup(config["gpio_pin"]["relay"], GPIO.OUT)
-    GPIO.setup(config["gpio_pin"]["sensor_pintu"], GPIO.IN , pull_up_down=GPIO.PUD_UP)
+    GPIO.setup(config["gpio_pin"]["alarm"], GPIO.OUT)
+    GPIO.setup(config["gpio_pin"]["sensor_pintu"], GPIO.IN, pull_up_down=GPIO.PUD_UP)
     GPIO.setup(config["gpio_pin"]["saklar_manual"], GPIO.IN, pull_up_down=GPIO.PUD_UP)
 
     if len(sys.argv) > 1 and sys.argv[1] == "run":
-        logger.debug("Starting GUI..")
+        logger.debug("Starting GUI...")
         app = QtGui.QApplication(sys.argv)
         ui = Main()
         sys.exit(app.exec_())
 
     else:
-        while True:
-            try:
-                cmd = raw_input("access_door> ")
-
-                # UNTUK MENDAFTARKAN KARYAWAN BARU
-                if cmd == "daftar":
-                    nama = raw_input("NAMA \t\t: ")
-                    jabatan = raw_input("JABATAN \t: ")
-
-                    if not nama or not jabatan:
-                        print "Nama dan jabatan harus diisi. Silakan ulangi kembali"
-                        continue
-
-                    # enroll sidik jari
-                    fp_id = fp.enroll()
-
-                    # keluar loop kalau sudah pernah terdaftar
-                    if fp_id < 0:
-                        continue
-
-                    if use_nfc:
-                        # scan kartu
-                        print "Tempelkan kartu..."
-                        card_id = nfc.scan()
-
-                        # cek apakah kartu sudah pernah terdaftar
-                        cur = db_con.cursor()
-                        cur.execute("SELECT * FROM `karyawan` WHERE card_id = ?", (card_id,))
-                        result = cur.fetchone()
-                        cur.close()
-
-                        if result:
-                            print "Kartu sudah terdaftar atas nama " + result[1]
-                            # hapus template yang sudah tersimpan
-                            fp.delete(fp_id)
-                            continue
-
-                    cur = db_con.cursor()
-
-                    if use_nfc:
-                        cur.execute("INSERT INTO `karyawan` (`nama`, `jabatan`, `fp_id`, `card_id`) VALUES (?, ?, ?, ?)", (nama, jabatan, fp_id, card_id))
-                    else:
-                        cur.execute("INSERT INTO `karyawan` (`nama`, `jabatan`, `fp_id`) VALUES (?, ?, ?)", (nama, jabatan, fp_id))
-
-                    cur.close()
-                    db_con.commit()
-
-                    print "Pendaftaran BERHASIL!"
-
-                # UNTUK MELIHAT DAFTAR SEMUA KARYAWAN
-                elif cmd == "list":
-                    cur = db_con.cursor()
-                    cur.execute("SELECT `id`, `nama`, `jabatan`, `fp_id`, `card_id`, datetime(`waktu_daftar`, 'localtime') FROM `karyawan` ORDER BY `nama` ASC")
-                    result = cur.fetchall()
-                    cur.close()
-
-                    data = [["ID", "NAMA", "JABATAN", "FINGERPRINT ID", "CARD ID", "WAKTU DAFTAR"]]
-
-                    for row, item in enumerate(result):
-                        data.append([str(item[0]), item[1], item[2], item[3], item[4], item[5]])
-
-                    table = AsciiTable(data)
-                    print table.table
-
-                # UNTUK MELIHAT LOG KARYAWAN MASUK
-                elif cmd == "log":
-                    cur = db_con.cursor()
-                    cur.execute("SELECT datetime(`log`.`waktu`, 'localtime'), `karyawan`.`nama`, `karyawan`.`jabatan` FROM `log` LEFT JOIN `karyawan` ON `karyawan`.`id` = `log`.`karyawan_id` ORDER BY `log`.`waktu` ASC")
-                    result = cur.fetchall()
-                    cur.close()
-
-                    data = [["WAKTU MASUK", "NAMA", "JABATAN"]]
-
-                    for row, item in enumerate(result):
-                        data.append([str(item[0]), item[1], item[2]])
-
-                    table = AsciiTable(data)
-                    print table.table
-
-                elif cmd == "clear database":
-                    confirm = raw_input("Anda yakin (y/N)? ")
-                    if confirm == "y":
-                        cur = db_con.cursor()
-                        cur.execute("DELETE FROM `karyawan`")
-                        cur.execute("DELETE FROM `log`")
-                        cur.close()
-                        db_con.commit()
-                        fp.clear_database()
-
-                elif cmd == "clear log":
-                    confirm = raw_input("Anda yakin (y/N)? ")
-                    if confirm == "y":
-                        cur = db_con.cursor()
-                        cur.execute("DELETE FROM `log`")
-                        cur.close()
-                        db_con.commit()
-
-                # UNTUK MENGHAPUS DATA KARYAWAN
-                elif cmd == "hapus":
-                    id_karyawan = raw_input("Masukkan ID yang akan Anda hapus: ")
-
-                    if not id_karyawan:
-                        continue
-
-                    cur = db_con.cursor()
-                    cur.execute("SELECT * FROM `karyawan` WHERE id = ?", (id_karyawan,))
-                    result = cur.fetchone()
-                    cur.close()
-
-                    if not result:
-                        print "ID karyawan tidak ditemukan. Silakan ketik 'list' untuk menampilkan data semua karyawan."
-                        continue
-
-                    data = [
-                        ["ID", "NAMA", "JABATAN", "FINGERPRINT ID", "CARD ID", "WAKTU DAFTAR"],
-                        [str(result[0]), result[1], result[2], result[3], result[4], result[5]]
-                    ]
-
-                    table = AsciiTable(data)
-                    print table.table
-                    confirm = raw_input("Anda yakin akan menghapus karyawan ini (y/n)?")
-
-                    if confirm == "y" or confirm == "Y":
-                        cur = db_con.cursor()
-                        cur.execute("DELETE FROM `karyawan` WHERE id = ?", (id_karyawan,))
-                        cur.close()
-                        db_con.commit()
-                        print "Data karyawan berhasil dihapus"
-                        # hapus template sidik jari
-                        fp.delete(int(result[3]))
-
-                # UNTUK MENJALANKAN PROGRAM GUI
-                elif cmd == "run":
-                    app = QtGui.QApplication(sys.argv)
-                    ui = Main()
-                    sys.exit(app.exec_())
-
-                # UNTUK KELUAR DARI PROGRAM
-                elif cmd == "exit" or cmd == "quit":
-                    print "Bye"
-                    exit(0)
-
-                elif cmd == "check memory fp":
-                    fp.check_memory()
-
-                elif cmd == "door open":
-                    if not GPIO.input(config["gpio_pin"]["sensor_pintu"]):
-                        print "Pintu sudah terbuka"
-                    else:
-                        GPIO.output(config["gpio_pin"]["relay"], 1)
-                        time.sleep(config["timer"]["open_duration"])
-                        GPIO.output(config["gpio_pin"]["relay"], 0)
-
-                elif cmd == "door status":
-                    if GPIO.input(config["gpio_pin"]["sensor_pintu"]):
-                        print "Pintu tertutup"
-                    else:
-                        print "Pintu terbuka"
-
-                elif cmd == "open manual":
-                    if not GPIO.input(config["gpio_pin"]["sensor_pintu"]):
-                        print "Pintu sudah terbuka"
-
-                    else:
-                        print "Tekan tombol"
-                        while GPIO.input(config["gpio_pin"]["saklar_manual"]):
-                            pass
-                        GPIO.output(config["gpio_pin"]["relay"], 1)
-                        time.sleep(config["timer"]["open_duration"])
-                        GPIO.output(config["gpio_pin"]["relay"], 0)
-
-
-                # UNTUK MENAMPILKAN DAFTAR PERINTAR
-                elif cmd == "help" or cmd == "?":
-                    data = [
-                        ['PERINTAH', 'KETERANGAN'],
-                        ['?', 'Menampilkan pesan ini'],
-                        ['akses', 'Menjalankan program akses pintu CLI'],
-                        ['daftar', 'Mendaftarkan karyawan baru'],
-                        ['exit', 'Keluar dari progam ini'],
-                        ['hapus', 'Menghapus karyawan'],
-                        ['clear database', 'Menghapus data karyawan dan log'],
-                        ['clear log', 'Menghapus log'],
-                        ['check memory fp', 'Check memory sensor finger print'],
-                        ['door open', 'Buka pintu'],
-                        ['door status', 'Status pintu'],
-                        ['open manual', 'Test pintu pake switch'],
-                        ['list', 'Daftar semua karyawan'],
-                        ['log', 'Menampilkan log akses pintu'],
-                        ['run', 'Menjalankan program akses pintu desktop']
-                    ]
-
-                    table = AsciiTable(data)
-                    print table.table
-
-                # PROGRAM AKSES PINTU (HARUS 2-2NYA)
-                elif cmd == "akses":
-                    print "Tempelkan jari Anda..."
-                    fp_id = fp.scan()
-
-                    if use_nfc:
-                        print "Tempelkan kartu Anda..."
-                        card_id = nfc.scan()
-
-                    cur = db_con.cursor()
-
-                    if use_nfc:
-                        cur.execute("SELECT * FROM `karyawan` WHERE fp_id = ? AND card_id = ?", (fp_id, card_id))
-                    else:
-                        cur.execute("SELECT * FROM `karyawan` WHERE fp_id = ?", (fp_id,))
-
-                    result = cur.fetchone()
-                    cur.close()
-
-                    if result:
-                        print "SELAMAT DATANG " + result[1] + ". SILAKAN MASUK."
-                        GPIO.output(config["gpio_pin"]["relay"], 1)
-                        terlalu_lama = False
-                        start_time = datetime.now()
-
-                        while GPIO.input(config["gpio_pin"]["sensor_pintu"]):
-                            if secs(start_time) > 3:
-                                terlalu_lama = True
-                                break
-
-                        if terlalu_lama:
-                            GPIO.output(config["gpio_pin"]["relay"], 0)
-                            print "Anda terlalu lama. Pintu nutup lagi."
-                            continue
-
-                        # kunci kembali pintu
-                        time.sleep(config["timer"]["open_duration"])
-                        GPIO.output(config["gpio_pin"]["relay"], 0)
-                        cur = db_con.cursor()
-                        cur.execute("INSERT INTO `log` (`karyawan_id`) VALUES (?)", (result[0],))
-                        cur.close()
-                        db_con.commit()
-
-                        while not GPIO.input(config["gpio_pin"]["sensor_pintu"]):
-                            print "Mohon tutup pintu"
-                            time.sleep(1)
-
-                    else:
-                        print "ANDA TIDAK TERDAFTAR"
-
-                elif cmd.strip():
-                    print "Perintah tidak dikenal. Ketik '?' untuk bantuan."
-
-                else:
-                    pass
-
-            except KeyboardInterrupt:
-                print("Bye");
-                exit(0)
+        logger.debug("Starting console app...")
+        console = Console()
+        console.run()
