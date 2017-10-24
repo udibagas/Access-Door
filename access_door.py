@@ -68,9 +68,9 @@ class Main(QtGui.QWidget, main_ui.Ui_Form):
             return
 
         if r.status_code != requests.codes.ok:
-            logger.info("Failed to sync user. " + r.text)
+            logger.info("Failed to sync user. " + str(r.status_code))
             return
-            
+
         try:
             users = r.json()
         except Exception as e:
@@ -153,10 +153,7 @@ class Main(QtGui.QWidget, main_ui.Ui_Form):
         else:
             nama = ""
 
-        message = "SILAKAN MASUK " + nama
-        self.info.setText(message)
-        logger.info(message)
-
+        self.info.setText("SILAKAN MASUK " + nama)
         GPIO.output(config["gpio_pin"]["relay"], 1)
         timeout = False
         alarm = False
@@ -235,8 +232,6 @@ class Main(QtGui.QWidget, main_ui.Ui_Form):
             logger.info("SUKSES mengirim log ke server")
         else:
             logger.warning("GAGAL mengirim log ke server")
-
-        self.info.setText("TEMPELKAN JARI ATAU KARTU ANDA")
 
 
 class ScanCardThread(QtCore.QThread):
@@ -550,7 +545,7 @@ class Console():
         if r.status_code == requests.codes.ok:
             print "Sync staff data OK!"
         else:
-            print "Sync staff data FAILED!" + r.text
+            print "Sync staff data FAILED! " + str(r.status_code)
 
     def list(self):
         cur = db.cursor()
@@ -734,7 +729,7 @@ class Console():
                 except Exception as e:
                     print "Sync staff data FAILED!" + str(e)
             else:
-                print "Sync staff data FAILED!" + r.text
+                print "Sync staff data FAILED! " + str(r.status_code)
 
     def buka_pintu(self):
         if GPIO.input(config["gpio_pin"]["sensor_pintu"]) != config["features"]["sensor_pintu"]["default_state"]:
