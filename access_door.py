@@ -84,7 +84,7 @@ class Main(QtGui.QWidget, main_ui.Ui_Form):
         cur.close()
 
         uuids = []
-        for row, item enumerate(results)
+        for row, item in enumerate(results)
             uuids.append(item[0])
 
         server_uuids = []
@@ -121,10 +121,24 @@ class Main(QtGui.QWidget, main_ui.Ui_Form):
         for i in uuids:
             if i not in server_uuids:
                 logger.info("Deleting user with uuid " + i)
+                # untuk menghapus template
+                cur = db.cursor()
+                cur.execute("SELECT `fp_id` FROM `karyawan` WHERE `uuid` = ?", (i,))
+                result = cur.fetchone()
+                cur.close()
+
+                # hapus record database
                 cur = db.cursor()
                 cur.execute("DELETE FROM `karyawan` WHERE `uuid` = ?", (i,))
                 cur.close()
                 db.commit()
+
+                # hapus template
+                try:
+                    if result:
+                        fp.deleteTemplate(int(result[0]))
+                except Exception as e:
+                    logger.info("Failed to remove template")
 
     def update_clock(self):
         self.tanggal.setText(time.strftime("%d %b %Y"))
