@@ -1,11 +1,10 @@
 {
-    "name": "Pintu Belakang",
-    "building": "D",
+    "name": "Pintu Data Center",
+    "building": "Ogan Lopian",
     "room": "Data Center",
-    "ip_address": "192.168.99.203",
-    "api_url": "http://192.168.99.150/smading/api/logPintu",
-    "logo": "kementan-small.png",
-    "description": "KEMENTERIAN PERTANIAN RI",
+    "api_url": "http://10.45.5.20/smading/api/",
+    "logo": "logo.png",
+    "instansi": "KABUPATEN PURWAKARTA",
     "device": {
         "fp": "/dev/serial1",
         "nfc": "/dev/serial2"
@@ -16,25 +15,30 @@
         "fingerprint or nfc",
         "fingerprint and nfc"
     ],
-    "active_mode": 1,
+    "active_mode": 2,
     "gpio_pin": {
+        "alarm": 32,
         "relay": 36,
         "sensor_pintu": 38,
         "saklar_manual": 40
     },
     "features": {
-        "sensor_pintu": false,
+        "sensor_pintu": {
+            "active": true,
+            "default_state": true
+        },
         "camera": false
     },
     "timer": {
-        "open_duration": 5
+        "timeout": 5,
+        "open_duration": 10
     },
-    "database": {
+    "db": {
         "driver": "sqlite",
         "host": "localhost",
         "port": 3306,
-        "user": "",
-        "pass": "",
+        "user": "root",
+        "pass": "bismillah",
         "name": "access_door.db"
     }
 }

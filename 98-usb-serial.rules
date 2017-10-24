@@ -2,8 +2,7 @@ ATTRS{idVendor}=="10c4", ATTRS{idProduct}=="ea60", KERNELS=="1-1.2", SYMLINK+="s
 ATTRS{idVendor}=="10c4", ATTRS{idProduct}=="ea60", KERNELS=="1-1.3", SYMLINK+="serial3"
 ATTRS{idVendor}=="10c4", ATTRS{idProduct}=="ea60", KERNELS=="1-1.4", SYMLINK+="serial4"
 ATTRS{idVendor}=="10c4", ATTRS{idProduct}=="ea60", KERNELS=="1-1.5", SYMLINK+="serial5"
-
-ATTRS{idVendor}=="067b", ATTRS{idProduct}=="2303", KERNELS=="1-1.2", SYMLINK+="serial1"
-ATTRS{idVendor}=="067b", ATTRS{idProduct}=="2303", KERNELS=="1-1.3", SYMLINK+="serial2"
-ATTRS{idVendor}=="067b", ATTRS{idProduct}=="2303", KERNELS=="1-1.4", SYMLINK+="serial3"
-ATTRS{idVendor}=="067b", ATTRS{idProduct}=="2303", KERNELS=="1-1.5", SYMLINK+="serial4"
+ATTRS{idVendor}=="067b", ATTRS{idProduct}=="2303", KERNELS=="1-1.2", SYMLINK+="serial2"
+ATTRS{idVendor}=="067b", ATTRS{idProduct}=="2303", KERNELS=="1-1.3", SYMLINK+="serial3"
+ATTRS{idVendor}=="067b", ATTRS{idProduct}=="2303", KERNELS=="1-1.4", SYMLINK+="serial4"
+ATTRS{idVendor}=="067b", ATTRS{idProduct}=="2303", KERNELS=="1-1.5", SYMLINK+="serial5"

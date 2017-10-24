@@ -218,6 +218,17 @@ tambahkan baris berikut agar layar tidak blank
 @xset s noblank
 ```
 
+```
+$ sudo vim /etc/lightdm/lightdm.conf
+```
+
+ke line 87. Ubah sbb:
+
+```
+xserver-command=X -s 0 dpms
+```
+
+
 ## Menjalankan program
 
 Jika lewat SSH ketik perintah berikut:

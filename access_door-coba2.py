@@ -550,6 +550,139 @@ class Console():
         table = AsciiTable(data)
         print table.table
 
+    def get_data_from_server(self):
+        try:
+            r = requests.get(config["api_url"] + "staff")
+        except Exception as e:
+            raise Exception("Koneksi ke server gagal. " + str(e))
+            return False
+
+        if r.status_code == requests.codes.ok:
+            try:
+                return r.json()
+            except Exception as e:
+                raise Exception("Invalid JSON. " + str(e))
+                return False
+        else:
+            raise Exception("Koneksi ke server error. " + str(r.text))
+            return False
+
+    def list_server(self):
+        data = [["ID", "NAMA", "JABATAN", "CARD ID", "WAKTU DAFTAR"]]
+
+        try:
+            staff = self.get_data_from_server()
+        except Exception as e:
+            print str(e)
+            return
+
+        for row, item in enumerate(staff):
+            data.append([int(item["id"]), item["nama"], item["jabatan"], item["card_id"], item["created_at"]])
+
+        table = AsciiTable(data)
+        print table.table
+
+    def assign(self):
+        data = [["ID", "NAMA", "JABATAN", "CARD ID", "WAKTU DAFTAR"]]
+
+        cur = db.cursor()
+        cur.execute("SELECT `uuid` FROM `karyawan`")
+        results = cur.fetchall()
+        cur.close()
+
+        uuids = []
+        for row, item enumerate(results)
+            uuids.append(item[0])
+
+        try:
+            staff = self.get_data_from_server()
+        except Exception as e:
+            print str(e)
+            return
+
+        for row, item in enumerate(staff):
+            if item["uuid"] in uuids:
+                continue
+            data.append([int(item["id"]), item["nama"], item["jabatan"], item["card_id"], item["created_at"]])
+
+        table = AsciiTable(data)
+        print table.table
+
+        staff_id = raw_input("Masukkan ID staff yang akan di assign: ")
+        fp_id = "***"
+
+        try:
+            staff_id = int(staff_id)
+        except Exception as e:
+            print "ID yang anda masukkan salah " + str(e)
+            return
+
+        try:
+            r = requests.get(config["api_url"] + "staff/" + str(staff_id))
+        except Exception as e:
+            print "Koneksi ke server GAGAL. " + str(e)
+            return
+
+        try:
+            staff = r.json()
+        except Exception as e:
+            print "Invalid JSON. " + str(e)
+            return
+
+        cur = db.cursor()
+        cur.execute("SELECT `nama` FROM `karyawan` WHERE `uuid` = ?", (staff["uuid"],))
+        result = cur.fetchone()
+
+        if result:
+            print result[0] + " sudah terdaftar."
+            cur.close()
+            return
+
+        if staff["template"] == "":
+            print "Template sidik jari tidak ditemukan."
+
+        else:
+            print "Saving template to fingerprint reader..."
+
+            try:
+                template = json.loads(staff["template"])
+            except Exception as e:
+                print "Template error. Invalid JSON"
+                return
+
+            try:
+                fp.uploadCharacteristics(0x01, template)
+            except Exception as e:
+                print "Failed to upload template to fingerprint reader. " + str(e)
+                return
+
+            try:
+                fp_id = fp.storeTemplate()
+            except Exception as e:
+                print "Failed to store template to fingerprint reader. " + str(e)
+                return
+
+            print "Fingerprint template saved to #" + str(fp_id)
+
+        print "Saving to local database..."
+
+        try:
+            cur.execute(
+                "INSERT INTO `karyawan` (`nama`, `jabatan`, `fp_id`, `card_id`, `template`, `uuid`) VALUES (?, ?, ?, ?, ?, ?)",
+                (staff["nama"], staff["jabatan"], fp_id, staff["card_id"], staff["template"], staff["uuid"])
+            )
+            cur.close()
+            db.commit()
+        except Exception as e:
+            print "Saving to local database FAILED! " + str(e)
+            print "Deleting template... "
+            try:
+                fp.deleteTemplate(fp_id)
+            except Exception as e:
+                print "Failed to delete template. Please delete it manually. " + str(e)
+
+        print "Saving to local database SUCCESS!"
+
     def log(self):
         cur = db.cursor()
         cur.execute("SELECT datetime(`log`.`waktu`, 'localtime'), `karyawan`.`nama`, `karyawan`.`jabatan` FROM `log` LEFT JOIN `karyawan` ON `karyawan`.`id` = `log`.`karyawan_id` ORDER BY `log`.`waktu` ASC")
@@ -743,6 +876,7 @@ class Console():
             ['PERINTAH', 'KETERANGAN'],
             ['?', 'Menampilkan pesan ini'],
             ['list', 'Menampilkan daftar semua staff di access door'],
+            ['list server', 'Menampilkan daftar semua staff di sever'],
             ['daftar', 'Mendaftarkan staff baru'],
             ['hapus', 'Menghapus staff'],
             ['log', 'Menampilkan log akses pintu'],
@@ -755,6 +889,7 @@ class Console():
             ['save template', 'Menyimpan template sidik jari ke database'],
             ['generate uuid', 'Generate UUID'],
             ['sync user', 'Sync user data ke server'],
+            ['assing', 'Assign user from server to access door'],
             ['exit', 'Keluar dari progam ini'],
             ['logout', 'Keluar dari program CLI']
         ]
@@ -802,6 +937,10 @@ class Console():
                     self.generate_uuid()
                 elif cmd == "sync user":
                     self.sync_user()
+                elif cmd == "list server":
+                    self.list_server()
+                elif cmd == "assign":
+                    self.assign()
                 elif cmd.strip():
                     print "Perintah tidak dikenal. Ketik '?' untuk bantuan."
                 else:
@@ -814,6 +953,12 @@ class Console():
 def secs(start_time):
     dt = datetime.now() - start_time
     return dt.seconds
+
+def dict_factory(cursor, row):
+    d = {}
+    for idx, col in enumerate(cursor.description):
+        d[col[0]] = row[idx]
+    return d
 
 if __name__ == "__main__":
     log_file_path = os.path.join(os.path.dirname(__file__), 'access_door.log')
@@ -900,11 +1045,11 @@ if __name__ == "__main__":
             `id` INTEGER PRIMARY KEY AUTOINCREMENT, \
             `nama` varchar(30) NOT NULL, \
             `jabatan` varchar(30) NOT NULL, \
-            `fp_id` varchar(20) NULL, \
             `fp_id1` varchar(20) NULL, \
+            `fp_id2` varchar(20) NULL, \
             `card_id` varchar(20) NULL, \
-            `template` text NULL, \
             `template1` text NULL, \
+            `template2` text NULL, \
             `uuid` varchar(50) NULL, \
             `active` boolean default 1, \
             `waktu_daftar` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP)");
