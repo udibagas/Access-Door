@@ -84,7 +84,7 @@ class Main(QtGui.QWidget, main_ui.Ui_Form):
         cur.close()
 
         uuids = []
-        for row, item in enumerate(results)
+        for row, item in enumerate(results):
             uuids.append(item[0])
 
         server_uuids = []
