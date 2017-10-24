@@ -29,7 +29,7 @@ class Main(QtGui.QWidget, main_ui.Ui_Form):
         self.update_clock()
         self.info.setText("TEMPELKAN JARI ATAU KARTU ANDA")
         self.instansi.setText(config["instansi"])
-        self.logo.setPixmap(QtGui.QPixmap(config["logo"]))
+        self.logo.setPixmap(QtGui.QPixmap(os.path.join(os.path.dirname(__file__), config["logo"])))
         self.showFullScreen()
 
         self.timer = QtCore.QTimer()
@@ -904,7 +904,7 @@ if __name__ == "__main__":
 
     elif config["db"]["driver"] == "sqlite":
         logger.debug("Connecting to database...")
-        db = sqlite3.connect(config["db"]["name"], check_same_thread=False)
+        db = sqlite3.connect(os.path.join(os.path.dirname(__file__), config["db"]["name"]), check_same_thread=False)
         logger.debug("Creating database schema...")
 
         db.execute("CREATE TABLE IF NOT EXISTS `karyawan` ( \
