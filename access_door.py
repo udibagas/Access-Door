@@ -426,19 +426,19 @@ class Console():
                 fp.convertImage(0x01)
             except Exception as e:
                 print "Error convert image on buffer 0x01. " + str(e)
-                break
+                return
 
             try:
                 result = fp.searchTemplate()
             except Exception as e:
                 print "Error search template. " + str(e)
-                break
+                return
 
             positionNumber = result[0]
 
             if positionNumber >= 0:
                 print('Jari sudah terdaftar. Silakan ulangi kembali')
-                break
+                return
 
             print('Angkat jari...')
             time.sleep(2)
@@ -451,29 +451,29 @@ class Console():
                 fp.convertImage(0x02)
             except Exception as e:
                 print "Error convert image on buffer 0x02. " + str(e)
-                break
+                return
 
             if not fp.compareCharacteristics():
                 print "Sidik jari tidak sama. Silakan ulangi kembali"
-                break
+                return
 
             try:
                 fp.createTemplate()
             except Exception as e:
                 print "Failed to create template. " + str(e)
-                break
+                return
 
             try:
                 fp_id = fp.storeTemplate()
             except Exception as e:
                 print "Failed to store template." + str(e)
-                break
+                return
 
             try:
                 fp.loadTemplate(fp_id, 0x01)
             except Exception as e:
                 print "Failed to load template." + str(e)
-                break
+                return
 
             try:
                 template = json.dumps(fp.downloadCharacteristics(0x01))
@@ -507,8 +507,7 @@ class Console():
                     fp.deleteTemplate(fp_id)
                 except Exception as e:
                     print "Failed to delete template. " + str(e)
-
-                break
+                    return
 
         if fp_id == "***" and card_id == "***":
             print "Pendaftaran GAGAL. Gagal membaca sidik jari dan kartu."
