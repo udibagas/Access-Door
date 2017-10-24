@@ -36,6 +36,11 @@ class Main(QtGui.QWidget, main_ui.Ui_Form):
         self.timer.timeout.connect(self.update_clock)
         self.timer.start(1000)
 
+        # timer untuk sync user
+        self.timer_sync = QtCore.QTimer()
+        self.timer_sync.timeout.connect(self.sync_user)
+        self.timer_sync.start(5000)
+
         if use_fp:
             self.scan_finger_thread = ScanFingerThread()
             self.connect(self.scan_finger_thread, QtCore.SIGNAL('updateInfo'), self.update_info)
@@ -54,6 +59,103 @@ class Main(QtGui.QWidget, main_ui.Ui_Form):
 
     def update_info(self, info):
         self.info.setText(info)
+
+    def sync_user(self):
+        fp_id = "***"
+
+        try:
+            r = requests.get(config["api_url"] + "akses/sync")
+        except Exception as e:
+            logger.info("Failed to sync user." + str(e))
+            return
+
+        if r.status_code == requests.codes.ok:
+            try:
+                users = r.json()
+            except Exception as e:
+                logger.info("Failed to sync user. " + str(e))
+                return
+
+        if len(users) == 0:
+            logger.info("No data from server")
+            return
+
+        cur = db.cursor()
+        cur.execute("SELECT `uuid` FROM `karyawan`")
+        results = cur.fetchall()
+
+        uuids = []
+        for row, item enumerate(results)
+            uuids.append(item[0])
+
+        server_uuids = []
+
+        # tambah user kalau ada yang baru
+        for row, item in enumerate(users):
+            server_uuids.append(item["uuid"])
+
+            # kalau sudah ada update saja data nama & jabatan barangkali berubah
+            if item["uuid"] in uuids:
+                cur.execute("UPDATE `karyawan` SET `nama` = ?, `jabatan` = ? WHERE `uuid` = ?", (item["nama"], item["jabatan"], item["uuid"]))
+
+            # kalau data fingerprint & card kosong lewati (kecil kemungkinan)
+            if (item["fp_id"] == "***" and item["card_id"] == "***") or : (item["template"] == "" and item["card_id"] == "***")
+                logger.info("Fingerprint template dan Card ID kosong.")
+                continue
+
+            if item["template"] == "":
+                logger.info("Template sidik jari tidak ditemukan.")
+
+            else:
+                logger.info("Saving template to fingerprint reader...")
+
+                try:
+                    template = json.loads(item["template"])
+                except Exception as e:
+                    logger.info("Template error. Invalid JSON. " + str(e))
+                    if (item["card_id"] == "***"):
+                        continue
+
+                try:
+                    fp.uploadCharacteristics(0x01, template)
+                except Exception as e:
+                    logger.info("Failed to upload template to fingerprint reader. " + str(e))
+                    if (item["card_id"] == "***"):
+                        continue
+
+                try:
+                    fp_id = fp.storeTemplate()
+                except Exception as e:
+                    logger.info("Failed to store template to fingerprint reader. " + str(e))
+                    if (item["card_id"] == "***"):
+                        continue
+
+                logger.info("Fingerprint template saved to #" + str(fp_id))
+
+            logger.info("Saving to local database...")
+
+            try:
+                cur.execute(
+                    "INSERT INTO `karyawan` (`nama`, `jabatan`, `fp_id`, `card_id`, `template`, `uuid`) VALUES (?, ?, ?, ?, ?, ?)",
+                    (item["nama"], item["jabatan"], fp_id, item["card_id"], item["template"], item["uuid"])
+                )
+                cur.close()
+                db.commit()
+            except Exception as e:
+                logger.info("Saving to local database FAILED! " + str(e))
+                logger.info("Deleting template... ")
+                try:
+                    fp.deleteTemplate(fp_id)
+                except Exception as e:
+                    logger.info("Failed to delete template. Please delete it manually. " + str(e))
+                continue
+
+            logger.info("Saving to local database SUCCESS!")
+
+        # hapus user kalau ada yg dihapus
+        for i in uuids:
+            if i not in server_uuids:
+                cur.execute("DELETE FROM `karyawan` WHERE `uuid` = ?", (i,))
 
     def update_clock(self):
         self.tanggal.setText(time.strftime("%d %b %Y"))
@@ -208,12 +310,26 @@ class ScanFingerThread(QtCore.QThread):
             except Exception as e:
                 continue
 
-            fp.convertImage(0x01)
-            result = fp.searchTemplate()
+            try:
+                fp.convertImage(0x01)
+            except Exception as e:
+                logger.info("Failed to convert image. " + str(e))
+                continue
+
+            try:
+                result = fp.searchTemplate()
+            except Exception as e:
+                logger.info("Failed to search template. " + str(e))
+                continue
+
             fp_id = result[0]
-            template = json.dumps(fp.downloadCharacteristics(0x01))
 
             # todo: login bandingin record database, baru create template kalau belum ada
+            try:
+                template = json.dumps(fp.downloadCharacteristics(0x01))
+            except Exception as e:
+                logger.info("Failed to download characteristics. " + str(e))
+                continue
 
             if fp_id == -1:
                 self.emit(QtCore.SIGNAL('updateInfo'), "SIDIK JARI TIDAK DITEMUKAN")
