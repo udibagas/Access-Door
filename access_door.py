@@ -67,19 +67,18 @@ class Main(QtGui.QWidget, main_ui.Ui_Form):
             logger.info("Failed to sync user." + str(e))
             return
 
-        if r.status_code == requests.codes.ok:
-            try:
-                users = r.json()
-            except Exception as e:
-                logger.info("Failed to sync user. " + str(e))
-                return
-
-            if len(users) == 0:
-                logger.info("No data from server")
-                return
-
-        else:
+        if r.status_code != requests.codes.ok:
             logger.info("Failed to sync user. " + r.text)
+            return
+            
+        try:
+            users = r.json()
+        except Exception as e:
+            logger.info("Failed to sync user. " + str(e))
+            return
+
+        if len(users) == 0:
+            logger.info("No data from server")
             return
 
         cur = db.cursor()
