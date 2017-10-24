@@ -78,6 +78,10 @@ class Main(QtGui.QWidget, main_ui.Ui_Form):
                 logger.info("No data from server")
                 return
 
+        else:
+            logger.info("Failed to sync user. " + r.text)
+            return
+
         cur = db.cursor()
         cur.execute("SELECT `uuid` FROM `karyawan`")
         results = cur.fetchall()
