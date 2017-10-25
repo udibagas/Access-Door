@@ -44,17 +44,14 @@ class Main(QtGui.QWidget, main_ui.Ui_Form):
         if use_fp:
             self.scan_finger_thread = ScanFingerThread()
             self.connect(self.scan_finger_thread, QtCore.SIGNAL('updateInfo'), self.update_info)
-            self.connect(self.scan_finger_thread, QtCore.SIGNAL('bukaPintu'), self.buka_pintu)
             self.scan_finger_thread.start()
 
         if use_nfc:
             self.scan_card_thread = ScanCardThread()
             self.connect(self.scan_card_thread, QtCore.SIGNAL('updateInfo'), self.update_info)
-            self.connect(self.scan_card_thread, QtCore.SIGNAL('bukaPintu'), self.buka_pintu)
             self.scan_card_thread.start()
 
         self.open_manual_thread = OpenManualThread()
-        self.connect(self.open_manual_thread, QtCore.SIGNAL('bukaPintu'), self.buka_pintu)
         self.open_manual_thread.start()
 
     def update_info(self, info):
@@ -62,7 +59,7 @@ class Main(QtGui.QWidget, main_ui.Ui_Form):
 
     def sync_user(self):
         try:
-            r = requests.get(config["api_url"] + "akses/sync")
+            r = requests.get(config["api_url"] + "pintu/staff")
         except Exception as e:
             logger.info("Failed to sync user." + str(e))
             return
@@ -245,6 +242,9 @@ class ScanCardThread(QtCore.QThread):
 
     def run(self):
         while not self.exiting:
+            if GPIO.input(config["gpio_pin"]["sensor_pintu"]) != config["features"]["sensor_pintu"]["default_state"]:
+                continue
+
             self.emit(QtCore.SIGNAL('updateInfo'), "TEMPELKAN JARI ATAU KARTU ANDA")
             try:
                 uid = pn532.read_passive_target()
@@ -308,6 +308,10 @@ class ScanFingerThread(QtCore.QThread):
             try:
                 self.read_image()
             except Exception as e:
+                continue
+
+            # skip when door is opened
+            if GPIO.input(config["gpio_pin"]["sensor_pintu"]) != config["features"]["sensor_pintu"]["default_state"]:
                 continue
 
             try:
