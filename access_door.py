@@ -37,9 +37,9 @@ class Main(QtGui.QWidget, main_ui.Ui_Form):
         self.timer.timeout.connect(self.update_clock)
         self.timer.start(1000)
 
-        self.sync_timer = QtCore.QTimer()
-        self.sync_timer.timeout.connect(self.sync_user)
-        self.sync_timer.start(config["timer"]["sync"] * 1000)
+        # self.sync_timer = QtCore.QTimer()
+        # self.sync_timer.timeout.connect(self.sync_user)
+        # self.sync_timer.start(config["timer"]["sync"] * 1000)
 
         if use_fp:
             self.scan_finger_thread = ScanFingerThread()
@@ -56,25 +56,6 @@ class Main(QtGui.QWidget, main_ui.Ui_Form):
 
     def update_info(self, info):
         self.info.setText(info)
-
-    def save_template(self, tpl):
-        try:
-            template = json.loads(tpl)
-        except Exception as e:
-            raise Exception("Template error. Invalid JSON. " + str(e))
-            return False
-
-        try:
-            fp.uploadCharacteristics(0x01, template)
-        except Exception as e:
-            raise Exception("Failed to upload template to fingerprint reader. " + str(e))
-            return False
-
-        try:
-            return fp.storeTemplate()
-        except Exception as e:
-            raise Exception("Failed to store template to fingerprint reader. " + str(e))
-            return False
 
     def sync_user(self):
         try:
@@ -99,11 +80,6 @@ class Main(QtGui.QWidget, main_ui.Ui_Form):
         cur.close()
 
         if len(users) == 0 and results:
-            # try:
-            #     self.scan_finger_thread.terminate()
-            # except Exception as e:
-            #     logger.info("error terminating thread. " + str(e))
-
             logger.info("Deleting all staff...")
             try:
                 cur = db.cursor()
@@ -115,18 +91,6 @@ class Main(QtGui.QWidget, main_ui.Ui_Form):
             except Exception as e:
                 logger.info("Failed to delete all staff!")
                 cur.close()
-                return
-
-            try:
-                fp.clearDatabase()
-            except Exception as e:
-                logger.info("Failed to clear database on fingerprint reader!")
-                return
-
-            # try:
-            #     self.scan_finger_thread.start()
-            # except Exception as e:
-            #     logger.info("error starting thread. " + str(e))
 
             return
 
@@ -135,12 +99,6 @@ class Main(QtGui.QWidget, main_ui.Ui_Form):
             uuids.append(item[0])
 
         server_uuids = []
-
-        # self.info.setText("SINKRONISASI DATABASE...")
-        # try:
-        #     self.scan_finger_thread.terminate()
-        # except Exception as e:
-        #     logger.info("error terminating thread. " + str(e))
 
         # tambah user kalau ada yang baru
         for row, item in enumerate(users):
@@ -156,29 +114,16 @@ class Main(QtGui.QWidget, main_ui.Ui_Form):
                 continue
 
             logger.info("Add user to local database...")
-
-            try:
-                fp_id = self.save_template(item["template"])
-            except Exception as e:
-                logger.info("Failed to save template" + str(e))
-                continue
-
             try:
                 cur = db.cursor()
                 cur.execute(
                     "INSERT INTO `karyawan` (`nama`, `jabatan`, `fp_id`, `card_id`, `template`, `uuid`) VALUES (?, ?, ?, ?, ?, ?)",
-                    (item["nama"], item["jabatan"], fp_id, item["card_id"], item["template"], item["uuid"])
+                    (item["nama"], item["jabatan"], '***', item["card_id"], item["template"], item["uuid"])
                 )
                 cur.close()
                 db.commit()
             except Exception as e:
                 logger.info("Saving to local database FAILED! " + str(e))
-
-                try:
-                    fp.deleteTemplate(fp_id)
-                except Exception as e:
-                    logger.info("Failed to delete template. " + str(e))
-
                 continue
 
             logger.info("Saving to local database SUCCESS!")
@@ -194,23 +139,10 @@ class Main(QtGui.QWidget, main_ui.Ui_Form):
                 cur.close()
 
                 if result:
-                    try:
-                        fp.deleteTemplate(result[0])
-                    except Exception as e:
-                        logger.info("Failed to delete template. " + str(e))
-                        continue
-
                     cur = db.cursor()
                     cur.execute("DELETE FROM `karyawan` WHERE `uuid` = ?", (i,))
                     cur.close()
                     db.commit()
-
-        # self.info.setText("DATABASE TERBAHARUI")
-        #
-        # try:
-        #     self.scan_finger_thread.start()
-        # except Exception as e:
-        #     logger.info("error starting thread. " + str(e))
 
     def update_clock(self):
         self.tanggal.setText(time.strftime("%d %b %Y"))
@@ -351,13 +283,50 @@ class ScanFingerThread(QtCore.QThread):
         self.exiting = True
         self.wait()
 
+    def save_template(self, tpl):
+        try:
+            template = json.loads(tpl)
+        except Exception as e:
+            raise Exception("Template error. Invalid JSON. " + str(e))
+            return False
+
+        try:
+            fp.uploadCharacteristics(0x01, template)
+        except Exception as e:
+            raise Exception("Failed to upload template to fingerprint reader. " + str(e))
+            return False
+
+        try:
+            return fp.storeTemplate()
+        except Exception as e:
+            raise Exception("Failed to store template to fingerprint reader. " + str(e))
+            return False
+
     def read_image(self):
         while not fp.readImage():
             time.sleep(config["timer"]["scan"])
 
     def run(self):
         while not self.exiting:
+            cur = db.cursor()
+            cur.execute("SELECT `id`, `template` FROM `karyawan` WHERE `fp_id` = '***' OR `fp_id` IS NULL OR `fp_id` = ''")
+            results = cur.fetchall()
+            cur.close()
+
+            for row, item in enumerate(results):
+                try:
+                    fp_id = self.save_template(item[1])
+                except Exception as e:
+                    continue
+
+                if fp_id >= 0:
+                    cur = db.cursor()
+                    cur.execute("UPDATE `karyawan` SET `fp_id` = ? WHERE `id` = ?", (fp_id, item[0]))
+                    cur.close()
+                    db.commit()
+
             self.emit(QtCore.SIGNAL('updateInfo'), "TEMPELKAN JARI ATAU KARTU ANDA")
+
             try:
                 self.read_image()
             except Exception as e:
@@ -393,6 +362,7 @@ class ScanFingerThread(QtCore.QThread):
 
             if not result:
                 self.emit(QtCore.SIGNAL('updateInfo'), "HAK AKSES ANDA TELAH DICABUT")
+
                 try:
                     fp.deleteTemplate(fp_id)
                 except Exception as e:
