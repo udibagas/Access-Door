@@ -126,13 +126,14 @@ class Main(QtGui.QWidget, main_ui.Ui_Form):
 
         server_uuids = []
 
+        self.info.setText("SINKRONISASI DATABASE...")
         # tambah user kalau ada yang baru
         for row, item in enumerate(users):
             server_uuids.append(item["uuid"])
 
             # kalau sudah ada update saja data nama & jabatan barangkali berubah
-            logger.info("Updating local database...")
             if item["uuid"] in uuids:
+                logger.info("Updating local database...")
                 cur = db.cursor()
                 cur.execute("UPDATE `karyawan` SET `nama` = ?, `jabatan` = ? WHERE `uuid` = ?", (item["nama"], item["jabatan"], item["uuid"]))
                 cur.close()
@@ -140,13 +141,22 @@ class Main(QtGui.QWidget, main_ui.Ui_Form):
                 continue
 
             logger.info("Add user to local database...")
-            self.scan_finger_thread.terminate()
+
+            try:
+                self.scan_finger_thread.terminate()
+            except Exception as e:
+                pass
+
             try:
                 fp_id = self.save_template(item["template"])
             except Exception as e:
                 logger.info("Failed to save template" + str(e))
                 continue
-            self.scan_finger_thread.start()
+
+            try:
+                self.scan_finger_thread.start()
+            except Exception as e:
+                pass
 
             try:
                 cur = db.cursor()
@@ -159,12 +169,20 @@ class Main(QtGui.QWidget, main_ui.Ui_Form):
             except Exception as e:
                 logger.info("Saving to local database FAILED! " + str(e))
 
-                self.scan_finger_thread.terminate()
+                try:
+                    self.scan_finger_thread.terminate()
+                except Exception as e:
+                    pass
+
                 try:
                     fp.deleteTemplate(fp_id)
                 except Exception as e:
                     logger.info("Failed to delete template. " + str(e))
-                self.scan_finger_thread.start()
+
+                try:
+                    self.scan_finger_thread.start()
+                except Exception as e:
+                    pass 
 
                 continue
 
@@ -193,6 +211,9 @@ class Main(QtGui.QWidget, main_ui.Ui_Form):
                     cur.execute("DELETE FROM `karyawan` WHERE `uuid` = ?", (i,))
                     cur.close()
                     db.commit()
+
+        self.info.setText("DATABASE TERBAHARUI")
+        time.sleep(2)
 
     def update_clock(self):
         self.tanggal.setText(time.strftime("%d %b %Y"))
