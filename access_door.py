@@ -72,10 +72,17 @@ class Main(QtGui.QWidget, main_ui.Ui_Form):
                 continue
 
             if len(users) == 0:
-                logger.info("Deleting all staff...")
                 cur = db.cursor()
+                cur.execute("SELECT `id` FROM `karyawan`")
+                row = cur.fetchone()
+                cur.close()
 
+                if row is None:
+                    continue
+
+                logger.info("Deleting all staff...")
                 try:
+                    cur = db.cursor()
                     cur.execute("DELETE FROM `karyawan`")
                     cur.close()
                     db.commit()
@@ -108,6 +115,7 @@ class Main(QtGui.QWidget, main_ui.Ui_Form):
                     cur.execute("UPDATE `karyawan` SET `nama` = ?, `jabatan` = ? WHERE `uuid` = ?", (item["nama"], item["jabatan"], item["uuid"]))
                     cur.close()
                     db.commit()
+                    continue
 
                 logger.info("Add user to local database...")
 
