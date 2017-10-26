@@ -59,17 +59,17 @@ class Main(QtGui.QWidget, main_ui.Ui_Form):
                 r = requests.get(config["api_url"] + "pintu/staff")
             except Exception as e:
                 logger.info("Failed to sync user." + str(e))
-                return
+                continue
 
             if r.status_code != requests.codes.ok:
                 logger.info("Failed to sync user. " + str(r.status_code))
-                return
+                continue
 
             try:
                 users = r.json()
             except Exception as e:
                 logger.info("Failed to sync user. " + str(e))
-                return
+                continue
 
             if len(users) == 0:
                 logger.info("Deleting all staff...")
@@ -902,7 +902,7 @@ if __name__ == "__main__":
         use_nfc = True
 
     except Exception as e:
-        message = "NFC Reader tidak ditemukan"
+        message = "NFC Reader tidak ditemukan. " + str(e)
         logger.error(message)
         print message
 
@@ -924,7 +924,7 @@ if __name__ == "__main__":
             db.close()
 
         except Exception as e:
-            message = "Gagal melakukan koneksi ke database. Cek konfigurasi database di config.json"
+            message = "Gagal melakukan koneksi ke database. Cek konfigurasi database di config.json. " + str(e)
             logger.error(message)
             print message
             exit()
