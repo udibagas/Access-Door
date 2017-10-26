@@ -343,6 +343,18 @@ class ScanFingerThread(QtCore.QThread):
             # kalau di fingerprint reader tidak ketemu cari di database barangkali ada
             if fp_id == -1:
                 try:
+                    fp.convertImage(0x02)
+                except Exception as e:
+                    logger.info("Failed to convert image. " + str(e))
+                    continue
+
+                try:
+                    fp.createTemplate()
+                except Exception as e:
+                    logger.info("Failed to create template. " + str(e))
+                    continue
+
+                try:
                     template = json.dumps(fp.downloadCharacteristics(0x01))
                 except Exception as e:
                     logger.info("Failed to download characteristics. " + str(e))
