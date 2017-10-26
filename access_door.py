@@ -18,6 +18,7 @@ import json
 import logging
 import logging.handlers
 import uuid
+from threading import Thread
 
 
 class Main(QtGui.QWidget, main_ui.Ui_Form):
