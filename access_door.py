@@ -86,15 +86,6 @@ class Main(QtGui.QWidget, main_ui.Ui_Form):
                     cur.close()
                     continue
 
-                logger.info("Deleting all template..")
-
-                try:
-                    fp.clearDatabase()
-                except Exception as e:
-                    logger.info("Delete template failed!")
-
-                continue
-
             cur = db.cursor()
             cur.execute("SELECT `uuid` FROM `karyawan`")
             results = cur.fetchall()
@@ -381,8 +372,15 @@ class ScanFingerThread(QtCore.QThread):
             result = cur.fetchone()
             cur.close()
 
+            # kalau ga ada di database berarti hak aksesnya sudah dihapus. hapus template
             if not result:
-                self.emit(QtCore.SIGNAL('updateInfo'), "ANDA TIDAK TERDAFTAR")
+                self.emit(QtCore.SIGNAL('updateInfo'), "HAK AKSES ANDA TELAH DICABUT")
+
+                try:
+                    fp.deleteTemplate(fp_id)
+                except Exception as e:
+                    logger.info("Template gagal dihapus." + str(e))
+
                 time.sleep(2)
                 continue
 
