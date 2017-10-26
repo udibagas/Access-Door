@@ -37,6 +37,10 @@ class Main(QtGui.QWidget, main_ui.Ui_Form):
         self.timer.timeout.connect(self.update_clock)
         self.timer.start(1000)
 
+        self.sync_timer = QtCore.QTimer()
+        self.sync_timer.timeout.connect(self.sync_user)
+        self.sync_timer.start(config["timer"]["sync"])
+
         if use_fp:
             self.scan_finger_thread = ScanFingerThread()
             self.connect(self.scan_finger_thread, QtCore.SIGNAL('updateInfo'), self.update_info)
@@ -54,102 +58,99 @@ class Main(QtGui.QWidget, main_ui.Ui_Form):
         self.info.setText(info)
 
     def sync_user(self):
-        while True:
-            try:
-                r = requests.get(config["api_url"] + "pintu/staff")
-            except Exception as e:
-                logger.info("Failed to sync user." + str(e))
-                continue
+        try:
+            r = requests.get(config["api_url"] + "pintu/staff")
+        except Exception as e:
+            logger.info("Failed to sync user." + str(e))
+            return
 
-            if r.status_code != requests.codes.ok:
-                logger.info("Failed to sync user. " + str(r.status_code))
-                continue
+        if r.status_code != requests.codes.ok:
+            logger.info("Failed to sync user. " + str(r.status_code))
+            return
 
-            try:
-                users = r.json()
-            except Exception as e:
-                logger.info("Failed to sync user. " + str(e))
-                continue
+        try:
+            users = r.json()
+        except Exception as e:
+            logger.info("Failed to sync user. " + str(e))
+            return
 
-            if len(users) == 0:
-                cur = db.cursor()
-                cur.execute("SELECT `id` FROM `karyawan`")
-                row = cur.fetchone()
-                cur.close()
-
-                if row is None:
-                    continue
-
-                logger.info("Deleting all staff...")
-                try:
-                    cur = db.cursor()
-                    cur.execute("DELETE FROM `karyawan`")
-                    cur.close()
-                    db.commit()
-                    logger.info("All staff deleted!")
-
-                except Exception as e:
-                    logger.info("Failed to delete all staff!")
-                    cur.close()
-                    continue
-
+        if len(users) == 0:
             cur = db.cursor()
-            cur.execute("SELECT `uuid` FROM `karyawan`")
-            results = cur.fetchall()
+            cur.execute("SELECT `id` FROM `karyawan`")
+            row = cur.fetchone()
             cur.close()
 
-            uuids = []
-            for row, item in enumerate(results):
-                uuids.append(item[0])
+            if row is None:
+                return
 
-            server_uuids = []
+            logger.info("Deleting all staff...")
+            try:
+                cur = db.cursor()
+                cur.execute("DELETE FROM `karyawan`")
+                cur.close()
+                db.commit()
+                logger.info("All staff deleted!")
 
-            # tambah user kalau ada yang baru
-            for row, item in enumerate(users):
-                server_uuids.append(item["uuid"])
+            except Exception as e:
+                logger.info("Failed to delete all staff!")
+                cur.close()
+                return
 
-                # kalau sudah ada update saja data nama & jabatan barangkali berubah
-                logger.info("Updating local database...")
-                if item["uuid"] in uuids:
-                    cur = db.cursor()
-                    cur.execute("UPDATE `karyawan` SET `nama` = ?, `jabatan` = ? WHERE `uuid` = ?", (item["nama"], item["jabatan"], item["uuid"]))
-                    cur.close()
-                    db.commit()
-                    continue
+        cur = db.cursor()
+        cur.execute("SELECT `uuid` FROM `karyawan`")
+        results = cur.fetchall()
+        cur.close()
 
-                logger.info("Add user to local database...")
+        uuids = []
+        for row, item in enumerate(results):
+            uuids.append(item[0])
 
-                try:
-                    cur = db.cursor()
-                    cur.execute(
-                        "INSERT INTO `karyawan` (`nama`, `jabatan`, `fp_id`, `card_id`, `template`, `uuid`) VALUES (?, ?, ?, ?, ?, ?)",
-                        (item["nama"], item["jabatan"], "***", item["card_id"], item["template"], item["uuid"])
-                    )
-                    cur.close()
-                    db.commit()
-                except Exception as e:
-                    logger.info("Saving to local database FAILED! " + str(e))
-                    continue
+        server_uuids = []
 
-                logger.info("Saving to local database SUCCESS!")
+        # tambah user kalau ada yang baru
+        for row, item in enumerate(users):
+            server_uuids.append(item["uuid"])
 
-            # hapus user kalau ada yg dihapus
-            for i in uuids:
-                if i not in server_uuids:
-                    logger.info("Deleting user with uuid " + i)
-                    # untuk menghapus template
-                    cur = db.cursor()
-                    cur.execute("SELECT `fp_id` FROM `karyawan` WHERE `uuid` = ?", (i,))
-                    result = cur.fetchone()
-                    cur.close()
+            # kalau sudah ada update saja data nama & jabatan barangkali berubah
+            logger.info("Updating local database...")
+            if item["uuid"] in uuids:
+                cur = db.cursor()
+                cur.execute("UPDATE `karyawan` SET `nama` = ?, `jabatan` = ? WHERE `uuid` = ?", (item["nama"], item["jabatan"], item["uuid"]))
+                cur.close()
+                db.commit()
+                return
 
-                    # hapus record database
-                    cur = db.cursor()
-                    cur.execute("DELETE FROM `karyawan` WHERE `uuid` = ?", (i,))
-                    cur.close()
-                    db.commit()
+            logger.info("Add user to local database...")
 
-            time.sleep(config["timer"]["sync"])
+            try:
+                cur = db.cursor()
+                cur.execute(
+                    "INSERT INTO `karyawan` (`nama`, `jabatan`, `fp_id`, `card_id`, `template`, `uuid`) VALUES (?, ?, ?, ?, ?, ?)",
+                    (item["nama"], item["jabatan"], "***", item["card_id"], item["template"], item["uuid"])
+                )
+                cur.close()
+                db.commit()
+            except Exception as e:
+                logger.info("Saving to local database FAILED! " + str(e))
+                return
+
+            logger.info("Saving to local database SUCCESS!")
+
+        # hapus user kalau ada yg dihapus
+        for i in uuids:
+            if i not in server_uuids:
+                logger.info("Deleting user with uuid " + i)
+                # untuk menghapus template
+                cur = db.cursor()
+                cur.execute("SELECT `fp_id` FROM `karyawan` WHERE `uuid` = ?", (i,))
+                result = cur.fetchone()
+                cur.close()
+
+                # hapus record database
+                cur = db.cursor()
+                cur.execute("DELETE FROM `karyawan` WHERE `uuid` = ?", (i,))
+                cur.close()
+                db.commit()
 
     def update_clock(self):
         self.tanggal.setText(time.strftime("%d %b %Y"))
@@ -347,6 +348,8 @@ class ScanFingerThread(QtCore.QThread):
                     logger.info("Failed to download characteristics. " + str(e))
                     self.emit(QtCore.SIGNAL('updateInfo'), "SIDIK JARI TIDAK DITEMUKAN")
                     continue
+
+                logger.info(template)
 
                 cur = db.cursor()
                 cur.execute("SELECT * FROM `karyawan` WHERE `template` = ?", (template,))
@@ -968,8 +971,6 @@ if __name__ == "__main__":
         logger.debug("Starting GUI...")
         app = QtGui.QApplication(sys.argv)
         ui = Main()
-        sync = Thread(target=ui.sync_user)
-        sync.start()
         sys.exit(app.exec_())
 
     else:
