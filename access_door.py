@@ -149,13 +149,6 @@ class Main(QtGui.QWidget, main_ui.Ui_Form):
                     cur.close()
                     db.commit()
 
-                    # hapus template
-                    try:
-                        if result:
-                            fp.deleteTemplate(int(result[0]))
-                    except Exception as e:
-                        logger.info("Failed to remove template")
-
             time.sleep(config["timer"]["sync"])
 
     def update_clock(self):
