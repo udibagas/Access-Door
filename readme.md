@@ -154,6 +154,7 @@ $ cp config-example.json config.json
 
 PIN | Type | Assignment | Koneksi
 -- | -- | -- | --
+32 | OUTPUT | Alarm | Untuk menghidupkan alarm
 36 | OUTPUT | Trigger Buka Pintu | Relay (Pin VCC ambil dari 5V usb to serial adapter)
 38 | INPUT | Status Pintu | Sensor Magnet
 40 | INPUT | Buka Pintu Manual | Push Button

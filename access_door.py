@@ -59,7 +59,7 @@ class Main(QtGui.QWidget, main_ui.Ui_Form):
 
     def sync_user(self):
         try:
-            r = requests.get(config["api_url"] + "pintu/staff")
+            r = requests.get(config["api_url"] + "pintu/staff", timeout=3)
         except Exception as e:
             logger.info("Failed to sync user." + str(e))
             return
@@ -186,7 +186,7 @@ class Main(QtGui.QWidget, main_ui.Ui_Form):
         data = {'access_by': nama, 'status': 0}
 
         try:
-            r = requests.post(config["api_url"] + "logPintu", data=data)
+            r = requests.post(config["api_url"] + "logPintu", data=data, timeout=3)
         except Exception as e:
             logger.warning("GAGAL mengirim log ke server")
 
@@ -225,7 +225,7 @@ class Main(QtGui.QWidget, main_ui.Ui_Form):
         data = {'access_by': nama, 'status': 1}
 
         try:
-            r = requests.post(config["api_url"] + "logPintu", data=data)
+            r = requests.post(config["api_url"] + "logPintu", data=data, timeout=3)
         except Exception as e:
             logger.warning("GAGAL mengirim log ke server")
 
@@ -545,7 +545,7 @@ class Console():
         print "Syncing staff data to server..."
 
         try:
-            r = requests.post(config["api_url"] + "staff", data=data)
+            r = requests.post(config["api_url"] + "staff", data=data, timeout=3)
         except Exception as e:
             print "Sync staff data FAILED!" + str(e)
             return
@@ -725,7 +725,7 @@ class Console():
             print "Syncing " + item[1] + "..."
 
             try:
-                r = requests.post(config["api_url"] + "staff", data=data)
+                r = requests.post(config["api_url"] + "staff", data=data, timeout=3)
             except Exception as e:
                 print "Sync staff data FAILED!" + str(e)
                 continue
