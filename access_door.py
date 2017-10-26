@@ -99,10 +99,10 @@ class Main(QtGui.QWidget, main_ui.Ui_Form):
         cur.close()
 
         if len(users) == 0 and results:
-            try:
-                self.scan_finger_thread.terminate()
-            except Exception as e:
-                logger.info("error terminating thread. " + str(e))
+            # try:
+            #     self.scan_finger_thread.terminate()
+            # except Exception as e:
+            #     logger.info("error terminating thread. " + str(e))
 
             logger.info("Deleting all staff...")
             try:
@@ -123,10 +123,10 @@ class Main(QtGui.QWidget, main_ui.Ui_Form):
                 logger.info("Failed to clear database on fingerprint reader!")
                 return
 
-            try:
-                self.scan_finger_thread.start()
-            except Exception as e:
-                logger.info("error starting thread. " + str(e))
+            # try:
+            #     self.scan_finger_thread.start()
+            # except Exception as e:
+            #     logger.info("error starting thread. " + str(e))
 
             return
 
@@ -136,11 +136,11 @@ class Main(QtGui.QWidget, main_ui.Ui_Form):
 
         server_uuids = []
 
-        self.info.setText("SINKRONISASI DATABASE...")
-        try:
-            self.scan_finger_thread.terminate()
-        except Exception as e:
-            logger.info("error terminating thread. " + str(e))
+        # self.info.setText("SINKRONISASI DATABASE...")
+        # try:
+        #     self.scan_finger_thread.terminate()
+        # except Exception as e:
+        #     logger.info("error terminating thread. " + str(e))
 
         # tambah user kalau ada yang baru
         for row, item in enumerate(users):
@@ -205,12 +205,12 @@ class Main(QtGui.QWidget, main_ui.Ui_Form):
                     cur.close()
                     db.commit()
 
-        self.info.setText("DATABASE TERBAHARUI")
-
-        try:
-            self.scan_finger_thread.start()
-        except Exception as e:
-            logger.info("error starting thread. " + str(e))
+        # self.info.setText("DATABASE TERBAHARUI")
+        #
+        # try:
+        #     self.scan_finger_thread.start()
+        # except Exception as e:
+        #     logger.info("error starting thread. " + str(e))
 
     def update_clock(self):
         self.tanggal.setText(time.strftime("%d %b %Y"))
