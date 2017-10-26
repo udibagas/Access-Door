@@ -32,6 +32,7 @@
     "timer": {
         "timeout": 5,
         "open_duration": 10,
+        "scan": 0.2,
         "sync": 5
     },
     "db": {

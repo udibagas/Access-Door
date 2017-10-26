@@ -71,8 +71,28 @@ class Main(QtGui.QWidget, main_ui.Ui_Form):
                 return
 
             if len(users) == 0:
-                logger.info("No data from server")
-                return
+                logger.info("Deleting all staff...")
+                cur = db.cursor()
+
+                try:
+                    cur.execute("DELETE FROM `karyawan`")
+                    cur.close()
+                    db.commit()
+                    logger.info("All staff deleted!")
+
+                except Exception as e:
+                    logger.info("Failed to delete all staff!")
+                    cur.close()
+                    continue
+
+                logger.info("Deleting all template..")
+
+                try:
+                    fp.clearDatabase()
+                except Exception as e:
+                    logger.info("Delete template failed!")
+
+                continue
 
             cur = db.cursor()
             cur.execute("SELECT `uuid` FROM `karyawan`")
@@ -279,7 +299,7 @@ class ScanFingerThread(QtCore.QThread):
 
     def read_image(self):
         while not fp.readImage():
-            time.sleep(0.2)
+            time.sleep(config["timer"]["scan"])
 
     def save_template(self, tpl):
         try:
@@ -420,7 +440,7 @@ class Console():
             print('Tempelkan jari Anda...')
 
             while not fp.readImage():
-                time.sleep(0.2)
+                time.sleep(config["timer"]["scan"])
 
             try:
                 fp.convertImage(0x01)
