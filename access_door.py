@@ -99,6 +99,11 @@ class Main(QtGui.QWidget, main_ui.Ui_Form):
         cur.close()
 
         if len(users) == 0 and results:
+            try:
+                self.scan_finger_thread.terminate()
+            except Exception as e:
+                logger.info("error terminating thread. " + str(e))
+
             logger.info("Deleting all staff...")
             try:
                 cur = db.cursor()
@@ -113,20 +118,17 @@ class Main(QtGui.QWidget, main_ui.Ui_Form):
                 return
 
             try:
-                self.scan_finger_thread.terminate()
-            except Exception as e:
-                pass
-
-            try:
                 fp.clearDatabase()
             except Exception as e:
                 logger.info("Failed to clear database on fingerprint reader!")
                 return
 
             try:
-                self.scan_finger_thread.terminate()
+                self.scan_finger_thread.start()
             except Exception as e:
-                pass
+                logger.info("error starting thread. " + str(e))
+
+            return
 
         uuids = []
         for row, item in enumerate(results):
@@ -138,7 +140,7 @@ class Main(QtGui.QWidget, main_ui.Ui_Form):
         try:
             self.scan_finger_thread.terminate()
         except Exception as e:
-            pass
+            logger.info("error terminating thread. " + str(e))
 
         # tambah user kalau ada yang baru
         for row, item in enumerate(users):
@@ -204,11 +206,11 @@ class Main(QtGui.QWidget, main_ui.Ui_Form):
                     db.commit()
 
         self.info.setText("DATABASE TERBAHARUI")
+
         try:
             self.scan_finger_thread.start()
         except Exception as e:
-            pass
-        time.sleep(2)
+            logger.info("error starting thread. " + str(e))
 
     def update_clock(self):
         self.tanggal.setText(time.strftime("%d %b %Y"))
