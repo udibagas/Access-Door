@@ -849,7 +849,7 @@ if __name__ == "__main__":
         with open(config_file_path) as config_file:
             config = json.load(config_file)
     except Exception as e:
-        message = "Gagal membuka file konfigurasi (config.json)"
+        message = "Gagal membuka file konfigurasi (config.json). " + str(e)
         logger.error(message)
         print message
         exit()
@@ -860,6 +860,7 @@ if __name__ == "__main__":
     try:
         logger.debug("Initializing fingerprint reader...")
         fp = PyFingerprint(config["device"]["fp"], 57600, 0xFFFFFFFF, 0x00000000)
+
         if not fp.verifyPassword():
             message = 'Password fingerprint salah!'
             logger.error(message)
@@ -867,6 +868,7 @@ if __name__ == "__main__":
 
         logger.debug("Fingerprint reader OK!")
         use_fp = True
+
     except Exception as e:
         message = 'Gagal menginisialisasi fingerprint!' + str(e)
         logger.error(message)
@@ -879,6 +881,7 @@ if __name__ == "__main__":
         pn532.SAM_configuration()
         logger.debug("NFC Reader OK!")
         use_nfc = True
+
     except Exception as e:
         message = "NFC Reader tidak ditemukan"
         logger.error(message)
@@ -900,6 +903,7 @@ if __name__ == "__main__":
                 db=config["db"]["name"]
             )
             db.close()
+            
         except Exception as e:
             message = "Gagal melakukan koneksi ke database. Cek konfigurasi database di config.json"
             logger.error(message)

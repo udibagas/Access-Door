@@ -138,14 +138,14 @@ Login as ```pi``` user
 
 ```
 $ cd ~
-$ git clone https://github.com/udibagas/Access-Door.git
+$ git clone https://github.com/udibagas/Access-Door.git ACCESS_DOOR
+$ cd ACCESS_DOOR
+$ chmod +x run.sh
 ```
 
-Pindahkan di direcroty ```/home/pi```
-
+Copy config file dan sesuaikan.
 ```
-$ mv Access-Door/* .
-$ rm Access-Door -rf
+$ cp config-example.json config.json
 ```
 
 ## Pin Assignment
@@ -180,23 +180,17 @@ Hitam | GND | GND
 
 Posisi | Nama | Koneksi
 -- | -- | --
-Kiri atas | serial1 | Fingerprint
-Kiri bawah | serial2 | NFC
-Kanan atas | serial3 | -
-Kanan bawah | serial4 | -
+Kiri atas | serial2 | Fingerprint
+Kiri bawah | serial3 | NFC
+Kanan atas | serial4 | -
+Kanan bawah | serial5 | -
 
 ```
-$ sudo vim /etc/udev/rules.d/98-usb-serial.rules
+$ sudo mv 98-usb-serial.rules /etc/udev/rules.d/
+$ sudo /etc/init.d/udev restart
 ```
 
-Isi file sbb:
-
-```
-ATTRS{idVendor}=="10c4", ATTRS{idProduct}=="ea60", KERNELS=="1-1.2", SYMLINK+="serial1"
-ATTRS{idVendor}=="10c4", ATTRS{idProduct}=="ea60", KERNELS=="1-1.3", SYMLINK+="serial2"
-ATTRS{idVendor}=="10c4", ATTRS{idProduct}=="ea60", KERNELS=="1-1.4", SYMLINK+="serial3"
-ATTRS{idVendor}=="10c4", ATTRS{idProduct}=="ea60", KERNELS=="1-1.5", SYMLINK+="serial4"
-```
+Unplug, kemudian plugin NFC reader dan Fingerprint reader
 
 ## Agar running otomastis setelah boot
 
@@ -207,10 +201,16 @@ $ vim ~/.config/lxsession/LXDE-pi/autostart
 tambahkan baris berikut
 
 ```
-@python access_door.py run 2> error.log
+@/usr/bin/python /home/pi/ACCESS_DOOR/access_door.py run
 ```
 
-tambahkan baris berikut agar layar tidak blank
+## Agar Layar tidak blank (save power mode)
+
+```
+$ vim ~/.config/lxsession/LXDE-pi/autostart
+```
+
+Tambahkan baris berikut
 
 ```
 @xset s off
@@ -222,25 +222,18 @@ tambahkan baris berikut agar layar tidak blank
 $ sudo vim /etc/lightdm/lightdm.conf
 ```
 
-ke line 87. Ubah sbb:
+ke line 87 atau cari baris ```#xserver-command=X```. Ubah sbb:
 
 ```
 xserver-command=X -s 0 dpms
 ```
-
 
 ## Menjalankan program
 
 Jika lewat SSH ketik perintah berikut:
 
 ```
-$ export DISPLAY=:0
-```
-
-Kemudian:
-
-```
-$ python access_door.py run &
+$ bash run.sh
 ```
 
 ## CLI (Enroll, List, Hapus, Log, dsb)
