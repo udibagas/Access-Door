@@ -31,7 +31,8 @@
     },
     "timer": {
         "timeout": 5,
-        "open_duration": 10
+        "open_duration": 10,
+        "sync": 5
     },
     "db": {
         "driver": "sqlite",

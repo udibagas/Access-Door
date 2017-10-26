@@ -36,11 +36,6 @@ class Main(QtGui.QWidget, main_ui.Ui_Form):
         self.timer.timeout.connect(self.update_clock)
         self.timer.start(1000)
 
-        # timer untuk sync user
-        self.timer_sync = QtCore.QTimer()
-        self.timer_sync.timeout.connect(self.sync_user)
-        self.timer_sync.start(5000)
-
         if use_fp:
             self.scan_finger_thread = ScanFingerThread()
             self.connect(self.scan_finger_thread, QtCore.SIGNAL('updateInfo'), self.update_info)
@@ -58,87 +53,90 @@ class Main(QtGui.QWidget, main_ui.Ui_Form):
         self.info.setText(info)
 
     def sync_user(self):
-        try:
-            r = requests.get(config["api_url"] + "pintu/staff")
-        except Exception as e:
-            logger.info("Failed to sync user." + str(e))
-            return
+        while True:
+            try:
+                r = requests.get(config["api_url"] + "pintu/staff")
+            except Exception as e:
+                logger.info("Failed to sync user." + str(e))
+                return
 
-        if r.status_code != requests.codes.ok:
-            logger.info("Failed to sync user. " + str(r.status_code))
-            return
-
-        try:
-            users = r.json()
-        except Exception as e:
-            logger.info("Failed to sync user. " + str(e))
-            return
-
-        if len(users) == 0:
-            logger.info("No data from server")
-            return
-
-        cur = db.cursor()
-        cur.execute("SELECT `uuid` FROM `karyawan`")
-        results = cur.fetchall()
-        cur.close()
-
-        uuids = []
-        for row, item in enumerate(results):
-            uuids.append(item[0])
-
-        server_uuids = []
-
-        # tambah user kalau ada yang baru
-        for row, item in enumerate(users):
-            server_uuids.append(item["uuid"])
-
-            # kalau sudah ada update saja data nama & jabatan barangkali berubah
-            logger.info("Updating local database...")
-            if item["uuid"] in uuids:
-                cur = db.cursor()
-                cur.execute("UPDATE `karyawan` SET `nama` = ?, `jabatan` = ? WHERE `uuid` = ?", (item["nama"], item["jabatan"], item["uuid"]))
-                cur.close()
-                db.commit()
-
-            logger.info("Add user to local database...")
+            if r.status_code != requests.codes.ok:
+                logger.info("Failed to sync user. " + str(r.status_code))
+                return
 
             try:
-                cur = db.cursor()
-                cur.execute(
-                    "INSERT INTO `karyawan` (`nama`, `jabatan`, `fp_id`, `card_id`, `template`, `uuid`) VALUES (?, ?, ?, ?, ?, ?)",
-                    (item["nama"], item["jabatan"], "***", item["card_id"], item["template"], item["uuid"])
-                )
-                cur.close()
-                db.commit()
+                users = r.json()
             except Exception as e:
-                logger.info("Saving to local database FAILED! " + str(e))
-                continue
+                logger.info("Failed to sync user. " + str(e))
+                return
 
-            logger.info("Saving to local database SUCCESS!")
+            if len(users) == 0:
+                logger.info("No data from server")
+                return
 
-        # hapus user kalau ada yg dihapus
-        for i in uuids:
-            if i not in server_uuids:
-                logger.info("Deleting user with uuid " + i)
-                # untuk menghapus template
-                cur = db.cursor()
-                cur.execute("SELECT `fp_id` FROM `karyawan` WHERE `uuid` = ?", (i,))
-                result = cur.fetchone()
-                cur.close()
+            cur = db.cursor()
+            cur.execute("SELECT `uuid` FROM `karyawan`")
+            results = cur.fetchall()
+            cur.close()
 
-                # hapus record database
-                cur = db.cursor()
-                cur.execute("DELETE FROM `karyawan` WHERE `uuid` = ?", (i,))
-                cur.close()
-                db.commit()
+            uuids = []
+            for row, item in enumerate(results):
+                uuids.append(item[0])
 
-                # hapus template
+            server_uuids = []
+
+            # tambah user kalau ada yang baru
+            for row, item in enumerate(users):
+                server_uuids.append(item["uuid"])
+
+                # kalau sudah ada update saja data nama & jabatan barangkali berubah
+                logger.info("Updating local database...")
+                if item["uuid"] in uuids:
+                    cur = db.cursor()
+                    cur.execute("UPDATE `karyawan` SET `nama` = ?, `jabatan` = ? WHERE `uuid` = ?", (item["nama"], item["jabatan"], item["uuid"]))
+                    cur.close()
+                    db.commit()
+
+                logger.info("Add user to local database...")
+
                 try:
-                    if result:
-                        fp.deleteTemplate(int(result[0]))
+                    cur = db.cursor()
+                    cur.execute(
+                        "INSERT INTO `karyawan` (`nama`, `jabatan`, `fp_id`, `card_id`, `template`, `uuid`) VALUES (?, ?, ?, ?, ?, ?)",
+                        (item["nama"], item["jabatan"], "***", item["card_id"], item["template"], item["uuid"])
+                    )
+                    cur.close()
+                    db.commit()
                 except Exception as e:
-                    logger.info("Failed to remove template")
+                    logger.info("Saving to local database FAILED! " + str(e))
+                    continue
+
+                logger.info("Saving to local database SUCCESS!")
+
+            # hapus user kalau ada yg dihapus
+            for i in uuids:
+                if i not in server_uuids:
+                    logger.info("Deleting user with uuid " + i)
+                    # untuk menghapus template
+                    cur = db.cursor()
+                    cur.execute("SELECT `fp_id` FROM `karyawan` WHERE `uuid` = ?", (i,))
+                    result = cur.fetchone()
+                    cur.close()
+
+                    # hapus record database
+                    cur = db.cursor()
+                    cur.execute("DELETE FROM `karyawan` WHERE `uuid` = ?", (i,))
+                    cur.close()
+                    db.commit()
+
+                    # hapus template
+                    try:
+                        if result:
+                            fp.deleteTemplate(int(result[0]))
+                    except Exception as e:
+                        logger.info("Failed to remove template")
+
+            time.sleep(config["timer"]["sync"])
 
     def update_clock(self):
         self.tanggal.setText(time.strftime("%d %b %Y"))
@@ -903,7 +901,7 @@ if __name__ == "__main__":
                 db=config["db"]["name"]
             )
             db.close()
-            
+
         except Exception as e:
             message = "Gagal melakukan koneksi ke database. Cek konfigurasi database di config.json"
             logger.error(message)
@@ -950,6 +948,8 @@ if __name__ == "__main__":
         logger.debug("Starting GUI...")
         app = QtGui.QApplication(sys.argv)
         ui = Main()
+        sync = Thread(target=ui.sync_user)
+        sync.start()
         sys.exit(app.exec_())
 
     else:

@@ -233,7 +233,7 @@ xserver-command=X -s 0 dpms
 Jika lewat SSH ketik perintah berikut:
 
 ```
-$ bash run.sh
+$ ./run.sh
 ```
 
 ## CLI (Enroll, List, Hapus, Log, dsb)
