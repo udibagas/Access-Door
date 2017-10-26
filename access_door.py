@@ -39,7 +39,7 @@ class Main(QtGui.QWidget, main_ui.Ui_Form):
 
         self.sync_timer = QtCore.QTimer()
         self.sync_timer.timeout.connect(self.sync_user)
-        self.sync_timer.start(config["timer"]["sync"])
+        self.sync_timer.start(config["timer"]["sync"] * 1000)
 
         if use_fp:
             self.scan_finger_thread = ScanFingerThread()
