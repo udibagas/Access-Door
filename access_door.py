@@ -57,6 +57,25 @@ class Main(QtGui.QWidget, main_ui.Ui_Form):
     def update_info(self, info):
         self.info.setText(info)
 
+    def save_template(self, tpl):
+        try:
+            template = json.loads(tpl)
+        except Exception as e:
+            raise Exception("Template error. Invalid JSON. " + str(e))
+            return False
+
+        try:
+            fp.uploadCharacteristics(0x01, template)
+        except Exception as e:
+            raise Exception("Failed to upload template to fingerprint reader. " + str(e))
+            return False
+
+        try:
+            return fp.storeTemplate()
+        except Exception as e:
+            raise Exception("Failed to store template to fingerprint reader. " + str(e))
+            return False
+
     def sync_user(self):
         try:
             r = requests.get(config["api_url"] + "pintu/staff")
@@ -118,21 +137,36 @@ class Main(QtGui.QWidget, main_ui.Ui_Form):
                 cur.execute("UPDATE `karyawan` SET `nama` = ?, `jabatan` = ? WHERE `uuid` = ?", (item["nama"], item["jabatan"], item["uuid"]))
                 cur.close()
                 db.commit()
-                return
+                continue
 
             logger.info("Add user to local database...")
+            self.scan_finger_thread.terminate()
+            try:
+                fp_id = self.save_template(item["template"])
+            except Exception as e:
+                logger.info("Failed to save template" + str(e))
+                continue
+            self.scan_finger_thread.start()
 
             try:
                 cur = db.cursor()
                 cur.execute(
                     "INSERT INTO `karyawan` (`nama`, `jabatan`, `fp_id`, `card_id`, `template`, `uuid`) VALUES (?, ?, ?, ?, ?, ?)",
-                    (item["nama"], item["jabatan"], "***", item["card_id"], item["template"], item["uuid"])
+                    (item["nama"], item["jabatan"], fp_id, item["card_id"], item["template"], item["uuid"])
                 )
                 cur.close()
                 db.commit()
             except Exception as e:
                 logger.info("Saving to local database FAILED! " + str(e))
-                return
+
+                self.scan_finger_thread.terminate()
+                try:
+                    fp.deleteTemplate(fp_id)
+                except Exception as e:
+                    logger.info("Failed to delete template. " + str(e))
+                self.scan_finger_thread.start()
+
+                continue
 
             logger.info("Saving to local database SUCCESS!")
 
@@ -146,11 +180,19 @@ class Main(QtGui.QWidget, main_ui.Ui_Form):
                 result = cur.fetchone()
                 cur.close()
 
-                # hapus record database
-                cur = db.cursor()
-                cur.execute("DELETE FROM `karyawan` WHERE `uuid` = ?", (i,))
-                cur.close()
-                db.commit()
+                if result:
+                    self.scan_finger_thread.terminate()
+                    try:
+                        fp.deleteTemplate(result[0])
+                    except Exception as e:
+                        logger.info("Failed to delete template. " + str(e))
+                        continue
+                    self.scan_finger_thread.start()
+
+                    cur = db.cursor()
+                    cur.execute("DELETE FROM `karyawan` WHERE `uuid` = ?", (i,))
+                    cur.close()
+                    db.commit()
 
     def update_clock(self):
         self.tanggal.setText(time.strftime("%d %b %Y"))
@@ -295,25 +337,6 @@ class ScanFingerThread(QtCore.QThread):
         while not fp.readImage():
             time.sleep(config["timer"]["scan"])
 
-    def save_template(self, tpl):
-        try:
-            template = json.loads(tpl)
-        except Exception as e:
-            raise Exception("Template error. Invalid JSON. " + str(e))
-            return False
-
-        try:
-            fp.uploadCharacteristics(0x01, template)
-        except Exception as e:
-            raise Exception("Failed to upload template to fingerprint reader. " + str(e))
-            return False
-
-        try:
-            return fp.storeTemplate()
-        except Exception as e:
-            raise Exception("Failed to store template to fingerprint reader. " + str(e))
-            return False
-
     def run(self):
         while not self.exiting:
             self.emit(QtCore.SIGNAL('updateInfo'), "TEMPELKAN JARI ATAU KARTU ANDA")
@@ -340,58 +363,18 @@ class ScanFingerThread(QtCore.QThread):
 
             fp_id = result[0]
 
-            # kalau di fingerprint reader tidak ketemu cari di database barangkali ada
             if fp_id == -1:
-                try:
-                    fp.convertImage(0x02)
-                except Exception as e:
-                    logger.info("Failed to convert image. " + str(e))
-                    continue
-
-                try:
-                    fp.createTemplate()
-                except Exception as e:
-                    logger.info("Failed to create template. " + str(e))
-                    continue
-
-                try:
-                    template = json.dumps(fp.downloadCharacteristics(0x01))
-                except Exception as e:
-                    logger.info("Failed to download characteristics. " + str(e))
-                    self.emit(QtCore.SIGNAL('updateInfo'), "SIDIK JARI TIDAK DITEMUKAN")
-                    continue
-
-                logger.info(template)
-
-                cur = db.cursor()
-                cur.execute("SELECT * FROM `karyawan` WHERE `template` = ?", (template,))
-                result = cur.fetchone()
-                cur.close()
-
-                if not result:
-                    self.emit(QtCore.SIGNAL('updateInfo'), "SIDIK JARI TIDAK DITEMUKAN")
-                    time.sleep(2)
-                    continue
-
-                fp_id = self.save_template(template)
-
-                if fp_id >= 0:
-                    cur = db.cursor()
-                    cur.execute("UPDATE `karyawan` SET `fp_id` = ? WHERE id = ?", (fp_id, result[0]))
-                    cur.close()
-                    db.commit()
-                    ui.buka_pintu(result)
-                    continue
+                self.emit(QtCore.SIGNAL('updateInfo'), "SIDIK JARI TIDAK DITEMUKAN")
+                time.sleep(2)
+                continue
 
             cur = db.cursor()
             cur.execute("SELECT * FROM karyawan WHERE `fp_id` = ?", (fp_id,))
             result = cur.fetchone()
             cur.close()
 
-            # kalau ga ada di database berarti hak aksesnya sudah dihapus. hapus template
             if not result:
                 self.emit(QtCore.SIGNAL('updateInfo'), "HAK AKSES ANDA TELAH DICABUT")
-
                 try:
                     fp.deleteTemplate(fp_id)
                 except Exception as e:
