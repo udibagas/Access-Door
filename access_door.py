@@ -841,13 +841,6 @@ if __name__ == "__main__":
     log_file_path = os.path.join(os.path.dirname(__file__), 'access_door.log')
     config_file_path = os.path.join(os.path.dirname(__file__), 'config.json')
 
-    CRITICAL	50
-    ERROR	40
-    WARNING	30
-    INFO	20
-    DEBUG	10
-    NOTSET	0
-
     log_level = {
         "NOTSET": 0,
         "DEBUG": 10,
