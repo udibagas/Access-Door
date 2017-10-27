@@ -5,6 +5,7 @@
     "api_url": "http://10.45.5.20/smading/api/",
     "logo": "logo.png",
     "instansi": "KABUPATEN PURWAKARTA",
+    "log_level": "DEBUG",
     "device": {
         "fp": "/dev/serial1",
         "nfc": "/dev/serial2"

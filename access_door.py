@@ -61,17 +61,17 @@ class Main(QtGui.QWidget, main_ui.Ui_Form):
         try:
             r = requests.get(config["api_url"] + "pintu/staff", timeout=3)
         except Exception as e:
-            logger.info("Failed to sync user." + str(e))
+            logger.debug("Failed to sync user." + str(e))
             return
 
         if r.status_code != requests.codes.ok:
-            logger.info("Failed to sync user. " + str(r.status_code))
+            logger.debug("Failed to sync user. " + str(r.status_code))
             return
 
         try:
             users = r.json()
         except Exception as e:
-            logger.info("Failed to sync user. " + str(e))
+            logger.debug("Failed to sync user. " + str(e))
             return
 
         cur = db.cursor()
@@ -80,16 +80,16 @@ class Main(QtGui.QWidget, main_ui.Ui_Form):
         cur.close()
 
         if len(users) == 0 and results:
-            logger.info("Deleting all staff...")
+            logger.debug("Deleting all staff...")
             try:
                 cur = db.cursor()
                 cur.execute("DELETE FROM `karyawan`")
                 cur.close()
                 db.commit()
-                logger.info("All staff deleted!")
+                logger.debug("All staff deleted!")
 
             except Exception as e:
-                logger.info("Failed to delete all staff!")
+                logger.debug("Failed to delete all staff!")
                 cur.close()
 
             return
@@ -106,14 +106,14 @@ class Main(QtGui.QWidget, main_ui.Ui_Form):
 
             # kalau sudah ada update saja data nama & jabatan barangkali berubah
             if item["uuid"] in uuids:
-                logger.info("Updating local database...")
+                logger.debug("Updating local database...")
                 cur = db.cursor()
                 cur.execute("UPDATE `karyawan` SET `nama` = ?, `jabatan` = ? WHERE `uuid` = ?", (item["nama"], item["jabatan"], item["uuid"]))
                 cur.close()
                 db.commit()
                 continue
 
-            logger.info("Add user to local database...")
+            logger.debug("Add user to local database...")
             try:
                 cur = db.cursor()
                 cur.execute(
@@ -123,15 +123,15 @@ class Main(QtGui.QWidget, main_ui.Ui_Form):
                 cur.close()
                 db.commit()
             except Exception as e:
-                logger.info("Saving to local database FAILED! " + str(e))
+                logger.debug("Saving to local database FAILED! " + str(e))
                 continue
 
-            logger.info("Saving to local database SUCCESS!")
+            logger.debug("Saving to local database SUCCESS!")
 
         # hapus user kalau ada yg dihapus
         for i in uuids:
             if i not in server_uuids:
-                logger.info("Deleting user with uuid " + i)
+                logger.debug("Deleting user with uuid " + i)
                 # untuk menghapus template
                 cur = db.cursor()
                 cur.execute("SELECT `fp_id` FROM `karyawan` WHERE `uuid` = ?", (i,))
@@ -188,12 +188,12 @@ class Main(QtGui.QWidget, main_ui.Ui_Form):
         try:
             r = requests.post(config["api_url"] + "logPintu", data=data, timeout=3)
         except Exception as e:
-            logger.warning("GAGAL mengirim log ke server")
+            logger.debug("GAGAL mengirim log ke server")
 
         if r.status_code == requests.codes.ok:
-            logger.info("SUKSES mengirim log ke server")
+            logger.debug("SUKSES mengirim log ke server")
         else:
-            logger.warning("GAGAL mengirim log ke server")
+            logger.debug("GAGAL mengirim log ke server")
 
         open_time = datetime.now()
 
@@ -227,12 +227,12 @@ class Main(QtGui.QWidget, main_ui.Ui_Form):
         try:
             r = requests.post(config["api_url"] + "logPintu", data=data, timeout=3)
         except Exception as e:
-            logger.warning("GAGAL mengirim log ke server")
+            logger.debug("GAGAL mengirim log ke server")
 
         if r.status_code == requests.codes.ok:
-            logger.info("SUKSES mengirim log ke server")
+            logger.debug("SUKSES mengirim log ke server")
         else:
-            logger.warning("GAGAL mengirim log ke server")
+            logger.debug("GAGAL mengirim log ke server")
 
 
 class ScanCardThread(QtCore.QThread):
@@ -245,16 +245,17 @@ class ScanCardThread(QtCore.QThread):
         self.wait()
 
     def run(self):
+        self.emit(QtCore.SIGNAL('updateInfo'), "TEMPELKAN JARI ATAU KARTU ANDA")
         while not self.exiting:
             if GPIO.input(config["gpio_pin"]["sensor_pintu"]) != config["features"]["sensor_pintu"]["default_state"]:
                 continue
 
-            self.emit(QtCore.SIGNAL('updateInfo'), "TEMPELKAN JARI ATAU KARTU ANDA")
             try:
                 uid = pn532.read_passive_target()
             except Exception as e:
                 self.emit(QtCore.SIGNAL('updateInfo'), "GAGAL MEMBACA KARTU")
                 time.sleep(2)
+                self.emit(QtCore.SIGNAL('updateInfo'), "TEMPELKAN JARI ATAU KARTU ANDA")
                 continue
 
             if uid is "no_card":
@@ -269,9 +270,11 @@ class ScanCardThread(QtCore.QThread):
 
             if result:
                 ui.buka_pintu(result)
+                self.emit(QtCore.SIGNAL('updateInfo'), "TEMPELKAN JARI ATAU KARTU ANDA")
             else:
                 self.emit(QtCore.SIGNAL('updateInfo'), "KARTU TIDAK TERDAFTAR")
                 time.sleep(2)
+                self.emit(QtCore.SIGNAL('updateInfo'), "TEMPELKAN JARI ATAU KARTU ANDA")
 
 
 class ScanFingerThread(QtCore.QThread):
@@ -339,13 +342,13 @@ class ScanFingerThread(QtCore.QThread):
             try:
                 fp.convertImage(0x01)
             except Exception as e:
-                logger.info("Failed to convert image. " + str(e))
+                logger.debug("Failed to convert image. " + str(e))
                 continue
 
             try:
                 result = fp.searchTemplate()
             except Exception as e:
-                logger.info("Failed to search template. " + str(e))
+                logger.debug("Failed to search template. " + str(e))
                 continue
 
             fp_id = result[0]
@@ -366,7 +369,7 @@ class ScanFingerThread(QtCore.QThread):
                 try:
                     fp.deleteTemplate(fp_id)
                 except Exception as e:
-                    logger.info("Template gagal dihapus." + str(e))
+                    logger.debug("Template gagal dihapus." + str(e))
 
                 time.sleep(2)
                 continue
@@ -386,7 +389,7 @@ class OpenManualThread(QtCore.QThread):
     def run(self):
         while not self.exiting:
             if GPIO.input(config["gpio_pin"]["sensor_pintu"]) == config["features"]["sensor_pintu"]["default_state"] and not GPIO.input(config["gpio_pin"]["saklar_manual"]):
-                logger.info("Open by switch")
+                logger.debug("Open by switch")
                 ui.buka_pintu()
             else:
                 time.sleep(0.2)
@@ -838,8 +841,24 @@ if __name__ == "__main__":
     log_file_path = os.path.join(os.path.dirname(__file__), 'access_door.log')
     config_file_path = os.path.join(os.path.dirname(__file__), 'config.json')
 
+    CRITICAL	50
+    ERROR	40
+    WARNING	30
+    INFO	20
+    DEBUG	10
+    NOTSET	0
+
+    log_level = {
+        "NOTSET": 0,
+        "DEBUG": 10,
+        "INFO": 20,
+        "WARNING": 30,
+        "ERROR": 40,
+        "CRITICAL": 50
+    }
+
     logger = logging.getLogger(__name__)
-    logger.setLevel(logging.DEBUG)
+    logger.setLevel(log_level[config["log_level"]])
     handler = logging.handlers.RotatingFileHandler(log_file_path, maxBytes=1024000, backupCount=100)
     handler.setLevel(logging.DEBUG)
     formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
@@ -894,7 +913,7 @@ if __name__ == "__main__":
     if not use_fp and not use_nfc:
         message = "Fingerprint reader dan NFC reader tidak ditemukan"
         logger.error(message)
-        logger.info("Exit")
+        logger.debug("Exit")
         print message
         exit()
 
