@@ -98,7 +98,7 @@ class Main(QtGui.QWidget, main_ui.Ui_Form):
         results = cur.fetchall()
         cur.close()
 
-        if len(users) == 0 and results:
+        if len(server_users) == 0 and results:
             logger.debug("Deleting all staff...")
             try:
                 cur = db.cursor()
