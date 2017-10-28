@@ -174,7 +174,7 @@ class Main(QtGui.QWidget, main_ui.Ui_Form):
             GPIO.output(config["gpio_pin"]["relay"], 0)
             self.info.setText("WAKTU HABIS")
             self.play_audio("waktu_habis.ogg")
-            time.sleep(2)
+            time.sleep(3)
             self.info.setText("TEMPELKAN JARI ATAU KARTU ANDA")
             return
 
@@ -211,6 +211,7 @@ class Main(QtGui.QWidget, main_ui.Ui_Form):
                     GPIO.output(config["gpio_pin"]["alarm"], 1)
                     self.info.setText("MOHON TUTUP PINTU")
                     self.play_audio('mohon_tutup_pintu.ogg')
+                    time.sleep(3)
                     self.play_audio('alarm.ogg', -1)
                     alarm = True
 
@@ -313,7 +314,7 @@ class ScanCardThread(QtCore.QThread):
             else:
                 self.emit(QtCore.SIGNAL('updateInfo'), "KARTU TIDAK TERDAFTAR")
                 self.emit(QtCore.SIGNAL('playAudio'), "kartu_tidak_terdaftar.ogg")
-                time.sleep(2)
+                time.sleep(3)
                 self.emit(QtCore.SIGNAL('updateInfo'), "TEMPELKAN JARI ATAU KARTU ANDA")
 
 
@@ -411,7 +412,7 @@ class ScanFingerThread(QtCore.QThread):
             if fp_id == -1:
                 self.emit(QtCore.SIGNAL('updateInfo'), "SIDIK JARI TIDAK DITEMUKAN")
                 self.emit(QtCore.SIGNAL('playAudio'), "sidik_jari_tidak_ditemukan.ogg")
-                time.sleep(2)
+                time.sleep(3)
                 continue
 
             cur = db.cursor()
@@ -428,7 +429,7 @@ class ScanFingerThread(QtCore.QThread):
                 except Exception as e:
                     logger.debug("Template gagal dihapus." + str(e))
 
-                time.sleep(2)
+                time.sleep(3)
                 continue
 
             ui.buka_pintu(result)
