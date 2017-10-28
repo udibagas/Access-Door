@@ -60,6 +60,20 @@ class Main(QtGui.QWidget, main_ui.Ui_Form):
     def update_info(self, info):
         self.info.setText(info)
 
+    def update_clock(self):
+        self.tanggal.setText(time.strftime("%d %b %Y"))
+        self.jam.setText(time.strftime("%H:%M:%S"))
+
+    def play_audio(self, audio_file, loops=0):
+        audio = os.path.join(os.path.dirname(__file__), audio_file)
+        if os.path.isfile(audio):
+            try:
+                mixer.music.load(audio)
+            except Exception as e:
+                logger.debug("Failed to play " + audio_file + " : " + str(e))
+                return
+            mixer.music.play(loops)
+
     def sync_user(self):
         try:
             r = requests.get(config["api_url"] + "pintu/staff", timeout=3)
@@ -72,13 +86,13 @@ class Main(QtGui.QWidget, main_ui.Ui_Form):
             return
 
         try:
-            users = r.json()
+            server_users = r.json()
         except Exception as e:
             logger.debug("Failed to sync user. " + str(e))
             return
 
         cur = db.cursor()
-        cur.execute("SELECT `uuid` FROM `karyawan`")
+        cur.execute("SELECT `uuid`, `nama`, `jabatan`, `last_update` FROM `karyawan`")
         results = cur.fetchall()
         cur.close()
 
@@ -97,23 +111,37 @@ class Main(QtGui.QWidget, main_ui.Ui_Form):
 
             return
 
-        uuids = []
+        local_uuids = []
+        local_users = {}
+
         for row, item in enumerate(results):
-            uuids.append(item[0])
+            local_uuids.append(item[0])
+            local_users[item[0]] = {
+                "nama": item[1],
+                "jabatan": item[2],
+                "last_update": item[3]
+            }
 
         server_uuids = []
         cur = db.cursor()
-        # tambah user kalau ada yang baru
-        for row, item in enumerate(users):
+
+        for row, item in enumerate(server_users):
             server_uuids.append(item["uuid"])
 
-            if item["uuid"] in uuids:
-                continue
+            # edit user kalau waktu update beda
+            if item["uuid"] in local_uuids:
+                logger.debug("Updating " + item["nama"] + "...")
+                if item["updated_at"] > local_users[item["uuid"]]["last_update"]:
+                    cur.execute(
+                        "UPDATE `karyawan` SET `nama` = ?, `jabatan` = ?, `last_update` = ? WHERE `uuid` = ?",
+                        (item["nama"], item["jabatan"], item["last_update"], item["uuid"])
+                    )
 
-            logger.debug("Add user to local database...")
+            # tambah user kalau ada yang baru
+            logger.debug("Adding " + item["nama"] + " to local database...")
             cur.execute(
-                "INSERT INTO `karyawan` (`nama`, `jabatan`, `fp_id`, `card_id`, `template`, `uuid`) VALUES (?, ?, ?, ?, ?, ?)",
-                (item["nama"], item["jabatan"], '***', item["card_id"], item["template"], item["uuid"])
+                "INSERT INTO `karyawan` (`nama`, `jabatan`, `fp_id`, `card_id`, `template`, `uuid`, `last_update`) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                (item["nama"], item["jabatan"], '***', item["card_id"], item["template"], item["uuid"], item["updated_at"])
             )
 
         cur.close()
@@ -121,7 +149,7 @@ class Main(QtGui.QWidget, main_ui.Ui_Form):
 
         # hapus user kalau ada yg dihapus
         deleted_uuids = []
-        for i in uuids:
+        for i in local_uuids:
             if i not in server_uuids:
                 deleted_uuids.append(i)
 
@@ -134,20 +162,6 @@ class Main(QtGui.QWidget, main_ui.Ui_Form):
             )
             cur.close()
             db.commit()
-
-    def update_clock(self):
-        self.tanggal.setText(time.strftime("%d %b %Y"))
-        self.jam.setText(time.strftime("%H:%M:%S"))
-
-    def play_audio(self, audio_file, loops=0):
-        audio = os.path.join(os.path.dirname(__file__), audio_file)
-        if os.path.isfile(audio):
-            try:
-                mixer.music.load(audio)
-            except Exception as e:
-                logger.debug("Failed to play " + audio_file + " : " + str(e))
-                return
-            mixer.music.play(loops)
 
     def buka_pintu(self, karyawan=None):
         self.play_audio('silakan_masuk.ogg')
@@ -247,32 +261,6 @@ class Main(QtGui.QWidget, main_ui.Ui_Form):
         else:
             logger.debug("GAGAL mengirim log ke server")
 
-        # ambil data ke server barangkali ada yg update
-        try:
-            r = requests.get(config["api_url"] + "staff/" + result[2], timeout=3)
-        except Exception as e:
-            logger.debug(str(e))
-            return
-
-        if r.status_code != requests.codes.ok:
-            return
-
-        try:
-            staff = r.json()
-        except Exception as e:
-            logger.debug(str(e))
-            return
-
-        if staff['updated_at'] > result[3]:
-            logger.debug("Updating user data...")
-            cur = db.cursor()
-            cur.execute(
-                "UPDATE `karyawan` SET `nama` = ?, `jabatan` = ?, `last_update` = ? WHERE `uuid` = ?",
-                (staff["nama"], staff["jabatan"], staff["uuid"], staff["updated_at"])
-            )
-            cur.close()
-            db.commit()
-
 
 class ScanCardThread(QtCore.QThread):
     def __init__(self):
@@ -301,6 +289,7 @@ class ScanCardThread(QtCore.QThread):
                 continue
 
             self.emit(QtCore.SIGNAL('playAudio'), "beep.ogg")
+            time.sleep(0.2)
             card_id = str(binascii.hexlify(uid))
 
             cur = db.cursor()
