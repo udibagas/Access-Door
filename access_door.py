@@ -811,17 +811,18 @@ class Console():
                 elif cmd == "exit" or cmd == "quit":
                     print "Bye"
                     exit()
+
                 elif cmd == "run":
                     message = "Starting GUI..."
                     print message
                     logger.debug(message)
-                    break
-
                     mixer.init()
                     subprocess.call(["export", "DISPLAY=:0"])
                     app = QtGui.QApplication(sys.argv)
                     ui = Main()
                     sys.exit(app.exec_())
+                    break
+
                 elif cmd == "sync user":
                     self.sync_user()
                 elif cmd.strip():
