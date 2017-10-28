@@ -852,7 +852,7 @@ if __name__ == "__main__":
 
     if pid:
         print "aplikasi sudah berjalan dengan PID: " + str(pid)
-        subprocess.call("kill -9 " + pid, shell=True)
+        subprocess.call("kill -9 " + str(pid), shell=True)
 
     log_file_path = os.path.join(os.path.dirname(__file__), 'access_door.log')
     config_file_path = os.path.join(os.path.dirname(__file__), 'config.json')
