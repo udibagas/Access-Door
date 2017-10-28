@@ -842,7 +842,7 @@ def secs(start_time):
 def is_running():
     for pid in psutil.pids():
         p = psutil.Process(pid)
-        if p.name() == "python" and len(p.cmdline()) > 1 and "access_door.py" in p.cmdline()[1]:
+        if p.name() == "python" and len(p.cmdline()) > 1 and "access_door.py" in p.cmdline()[1] and pid != os.getpid():
             return pid
 
     return False
