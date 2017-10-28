@@ -20,7 +20,7 @@ import logging.handlers
 import uuid
 from threading import Thread
 from pygame import mixer
-import psutils
+import psutil
 
 
 class Main(QtGui.QWidget, main_ui.Ui_Form):

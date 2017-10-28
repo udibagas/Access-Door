@@ -117,7 +117,7 @@ $ sudo reboot
 $ sudo apt install python-pysqlite2 python-texttable python-qt4
 $ sudo pip install terminaltables
 $ sudo pip install pygame
-$ sudo pip install psutils
+$ sudo pip install psutil
 ```
 
 Install pyfingerprint.
