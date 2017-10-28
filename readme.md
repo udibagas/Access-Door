@@ -230,25 +230,22 @@ xserver-command=X -s 0 dpms
 Jika lewat SSH ketik perintah berikut:
 
 ```
+$ export DISPLAY=:0
+$ /usr/bin/python /home/pi/ACCESS_DOOR/access_door.py run &
+```
+
+atau
+
+```
+$ cd /home/pi/ACCESS_DOOR/
 $ ./run.sh
 ```
 
 ## CLI (Enroll, List, Hapus, Log, dsb)
 
-Pastikan program access door mati dengan perintah berikut:
 
 ```
-$ killall python
-```
-
-```
-$ python access_door.py
+$ /usr/bin/python /home/pi/ACCESS_DOOR/access_door.py
 ```
 
 Ketik ```?``` untuk melihat perintah yang tersedia
-
-Untuk menjalanan program utama ketik perintah:
-
-```
-access_door> run
-```

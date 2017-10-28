@@ -814,11 +814,11 @@ class Console():
                     exit()
 
                 elif cmd == "run":
+                    subprocess.call("export DISPLAY=:0", shell=True)
                     message = "Starting GUI..."
                     print message
                     logger.debug(message)
                     mixer.init()
-                    subprocess.call("export DISPLAY=:0", shell=True)
                     app = QtGui.QApplication(sys.argv)
                     ui = Main()
                     sys.exit(app.exec_())
