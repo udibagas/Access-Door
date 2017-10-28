@@ -669,7 +669,7 @@ class Console():
         try:
             id_karyawan = int(id_karyawan)
         except Exception as e:
-            print "ID yang Anda masukkan salah. " + str(e)
+            # print "ID yang Anda masukkan salah. " + str(e)
             return
 
         cur = db.cursor()
@@ -817,7 +817,7 @@ class Console():
                     print message
                     logger.debug(message)
                     mixer.init()
-                    subprocess.call(["export", "DISPLAY=:0"])
+                    subprocess.call("export DISPLAY=:0", shell=True)
                     app = QtGui.QApplication(sys.argv)
                     ui = Main()
                     sys.exit(app.exec_())
@@ -974,10 +974,12 @@ if __name__ == "__main__":
 
     else:
         try:
-            logger.info("Closing GUI...")
+            message = "Closing GUI..."
+            logger.debug(message)
+            print message
             ui.close()
         except Exception as e:
-            pass
+            print str(e)
 
         logger.debug("Starting console app...")
         console = Console()
