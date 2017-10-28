@@ -136,7 +136,7 @@ class Main(QtGui.QWidget, main_ui.Ui_Form):
                 if item["updated_at"] > local_users[item["uuid"]]["last_update"]:
                     cur.execute(
                         "UPDATE `karyawan` SET `nama` = ?, `jabatan` = ?, `last_update` = ? WHERE `uuid` = ?",
-                        (item["nama"], item["jabatan"], item["last_update"], item["uuid"])
+                        (item["nama"], item["jabatan"], item["updated_at"], item["uuid"])
                     )
 
             # tambah user kalau ada yang baru
