@@ -27,11 +27,13 @@ class Main(QtGui.QWidget, main_ui.Ui_Form):
         super(self.__class__, self).__init__()
         self.setAttribute(QtCore.Qt.WA_DeleteOnClose)
         self.setupUi(self)
-
-        self.update_clock()
         self.info.setText("TEMPELKAN JARI ATAU KARTU ANDA")
         self.instansi.setText(config["instansi"])
         self.logo.setPixmap(QtGui.QPixmap(os.path.join(os.path.dirname(__file__), config["logo"])))
+
+        self.update_clock()
+        self.sync_user()
+
         self.showFullScreen()
 
         self.timer = QtCore.QTimer()
