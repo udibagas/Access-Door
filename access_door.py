@@ -20,6 +20,7 @@ import logging.handlers
 import uuid
 from threading import Thread
 from pygame import mixer
+import psutils
 
 
 class Main(QtGui.QWidget, main_ui.Ui_Form):
@@ -838,7 +839,21 @@ def secs(start_time):
     dt = datetime.now() - start_time
     return dt.seconds
 
+def is_running():
+    for pid in psutil.pids():
+        p = psutil.Process(pid)
+        if p.name() == "python" and len(p.cmdline()) > 1 and "access_door.py" in p.cmdline()[1]:
+            return pid
+
+    return False
+
 if __name__ == "__main__":
+    pid = is_running()
+
+    if pid:
+        print "aplikasi sudah berjalan dengan PID: " + str(pid)
+        subprocess.call("kill -9 " + pid, shell=True)
+
     log_file_path = os.path.join(os.path.dirname(__file__), 'access_door.log')
     config_file_path = os.path.join(os.path.dirname(__file__), 'config.json')
 
@@ -973,14 +988,6 @@ if __name__ == "__main__":
         sys.exit(app.exec_())
 
     else:
-        try:
-            message = "Closing GUI..."
-            logger.debug(message)
-            print message
-            ui.close()
-        except Exception as e:
-            print str(e)
-
         logger.debug("Starting console app...")
         console = Console()
         console.run()
