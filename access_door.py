@@ -383,11 +383,16 @@ class ScanFingerThread(QtCore.QThread):
 
             self.emit(QtCore.SIGNAL('playAudio'), "beep.ogg")
 
-            try:
-                fp.downloadImage(os.path.join(os.path.dirname(__file__), "img"))
-                self.fp_image.setPixmap(QtGui.QPixmap(os.path.join(os.path.dirname(__file__), "fp.png")))
-            except Exception as e:
-                logger.debug("Failed to donwload image. " + str(e))
+            # try:
+            #     os.remove(os.path.join(os.path.dirname(__file__), "img/fp.png"))
+            # except Exception as e:
+            #     pass
+            #
+            # try:
+            #     fp.downloadImage(os.path.join(os.path.dirname(__file__), "img/fp.png"))
+            #     self.emit(QtCore.SIGNAL('showFpImg'))
+            # except Exception as e:
+            #     logger.debug("Failed to donwload image. " + str(e))
 
             try:
                 fp.convertImage(0x01)
