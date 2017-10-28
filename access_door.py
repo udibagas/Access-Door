@@ -775,8 +775,7 @@ class Console():
             ['status pintu', 'Status pintu'],
             ['run', 'Menjalankan program akses pintu GUI'],
             ['sync user', 'Sync user data ke server'],
-            ['exit', 'Keluar dari progam ini'],
-            ['logout', 'Keluar dari program CLI']
+            ['exit', 'Keluar dari progam CLI']
         ]
 
         table = AsciiTable(data)
@@ -806,22 +805,21 @@ class Console():
                     self.status_pintu()
                 elif cmd == "help" or cmd == "?":
                     self.help()
-                elif cmd == "logout":
-                    print "Bye"
-                    break
                 elif cmd == "exit" or cmd == "quit":
                     print "Bye"
-                    exit()
+                    break
 
                 elif cmd == "run":
-                    subprocess.call("export DISPLAY=:0", shell=True)
                     message = "Starting GUI..."
                     print message
-                    logger.debug(message)
-                    mixer.init()
-                    app = QtGui.QApplication(sys.argv)
-                    ui = Main()
-                    sys.exit(app.exec_())
+                    subprocess.call("export DISPLAY=:0", shell=True)
+                    subprocess.call("/usr/bin/python " + __file__ + "run &", shell=True)
+
+                    # logger.debug(message)
+                    # mixer.init()
+                    # app = QtGui.QApplication(sys.argv)
+                    # ui = Main()
+                    # sys.exit(app.exec_())
                     break
 
                 elif cmd == "sync user":
@@ -842,7 +840,7 @@ def secs(start_time):
 def is_running():
     for pid in psutil.pids():
         p = psutil.Process(pid)
-        if p.name() == "python" and len(p.cmdline()) > 1 and "access_door.py" in p.cmdline()[1] and pid != os.getpid():
+        if p.name() == "python" and len(p.cmdline()) > 1 and __file__ in p.cmdline()[1] and pid != os.getpid():
             return pid
 
     return False
