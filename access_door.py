@@ -138,6 +138,7 @@ class Main(QtGui.QWidget, main_ui.Ui_Form):
                         "UPDATE `karyawan` SET `nama` = ?, `jabatan` = ?, `last_update` = ? WHERE `uuid` = ?",
                         (item["nama"], item["jabatan"], item["updated_at"], item["uuid"])
                     )
+                continue
 
             # tambah user kalau ada yang baru
             logger.debug("Adding " + item["nama"] + " to local database...")
@@ -703,62 +704,11 @@ class Console():
         except Exception as e:
             print "Gagal menghapus template sidik jari. " + str(e)
 
-    def save_template(self):
-        cur = db.cursor()
-        cur.execute("SELECT * FROM `karyawan` WHERE `template` IS NULL")
-        results = cur.fetchall()
-
-        for row, item in enumerate(results):
-            print "Loading template from fingerprint reader for " + item[1] + " ..."
-
-            try:
-                fp.loadTemplate(int(item[3]), 0x01)
-            except Exception as e:
-                print "Failed to load template. " + str(e)
-                continue
-
-            try:
-                template = json.dumps(fp.downloadCharacteristics(0x01))
-                pass
-            except Exception as e:
-                print "Failed to download template. " + str(e)
-                continue
-
-            cur.execute(
-                "UPDATE `karyawan` SET `template` = ? WHERE `id` = ?",
-                (template, item[3])
-            )
-            print "Template saved to database!"
-
-        cur.close()
-        db.commit()
-
-    def generate_uuid(self):
-        cur = db.cursor()
-        cur.execute("SELECT `id`, `nama` FROM `karyawan` WHERE `uuid` IS NULL")
-        results = cur.fetchall()
-
-        for row, item in enumerate(results):
-            print "Generating UUID for " + item[1] + " ..."
-            UUID = str(uuid.uuid4())
-            cur.execute(
-                "UPDATE `karyawan` SET `uuid` = ? WHERE `id` = ?",
-                (UUID, item[0])
-            )
-            print "UUID saved to database!"
-
-        cur.close()
-        db.commit()
-        print "Generate UUID completed!"
-
     def sync_user(self):
         confirm = raw_input("Anda yakin (y/n)? ")
 
         if confirm != 'y':
             return
-
-        self.generate_uuid()
-        self.save_template()
 
         cur = db.cursor()
         cur.execute("SELECT `id`, `nama`, `jabatan`, `fp_id`, `card_id`, `template`, `uuid` FROM `karyawan`")
@@ -823,8 +773,6 @@ class Console():
             ['buka pintu', 'Buka pintu'],
             ['status pintu', 'Status pintu'],
             ['run', 'Menjalankan program akses pintu GUI'],
-            ['save template', 'Menyimpan template sidik jari ke database'],
-            ['generate uuid', 'Generate UUID'],
             ['sync user', 'Sync user data ke server'],
             ['exit', 'Keluar dari progam ini'],
             ['logout', 'Keluar dari program CLI']
@@ -867,10 +815,6 @@ class Console():
                     app = QtGui.QApplication(sys.argv)
                     ui = Main()
                     sys.exit(app.exec_())
-                elif cmd == "save template":
-                    self.save_template()
-                elif cmd == "generate uuid":
-                    self.generate_uuid()
                 elif cmd == "sync user":
                     self.sync_user()
                 elif cmd.strip():
@@ -940,6 +884,7 @@ if __name__ == "__main__":
         print message
 
     try:
+        # todo: ini biasanya lama banget. harus dikasih timeout
         logger.debug("Initializing NFC Reader...")
         pn532 = PN532.PN532(config["device"]["nfc"], 115200)
         pn532.begin()
