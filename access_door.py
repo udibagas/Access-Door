@@ -19,6 +19,7 @@ import logging
 import logging.handlers
 import uuid
 from threading import Thread
+from pygame import mixer
 
 
 class Main(QtGui.QWidget, main_ui.Ui_Form):
@@ -44,11 +45,13 @@ class Main(QtGui.QWidget, main_ui.Ui_Form):
         if use_fp:
             self.scan_finger_thread = ScanFingerThread()
             self.connect(self.scan_finger_thread, QtCore.SIGNAL('updateInfo'), self.update_info)
+            self.connect(self.scan_finger_thread, QtCore.SIGNAL('playAudio'), self.play_audio)
             self.scan_finger_thread.start()
 
         if use_nfc:
             self.scan_card_thread = ScanCardThread()
             self.connect(self.scan_card_thread, QtCore.SIGNAL('updateInfo'), self.update_info)
+            self.connect(self.scan_card_thread, QtCore.SIGNAL('playAudio'), self.play_audio)
             self.scan_card_thread.start()
 
         self.open_manual_thread = OpenManualThread()
@@ -99,56 +102,52 @@ class Main(QtGui.QWidget, main_ui.Ui_Form):
             uuids.append(item[0])
 
         server_uuids = []
-
+        cur = db.cursor()
         # tambah user kalau ada yang baru
         for row, item in enumerate(users):
             server_uuids.append(item["uuid"])
 
-            # kalau sudah ada update saja data nama & jabatan barangkali berubah
             if item["uuid"] in uuids:
-                logger.debug("Updating local database...")
-                cur = db.cursor()
-                cur.execute("UPDATE `karyawan` SET `nama` = ?, `jabatan` = ? WHERE `uuid` = ?", (item["nama"], item["jabatan"], item["uuid"]))
-                cur.close()
-                db.commit()
                 continue
 
             logger.debug("Add user to local database...")
-            try:
-                cur = db.cursor()
-                cur.execute(
-                    "INSERT INTO `karyawan` (`nama`, `jabatan`, `fp_id`, `card_id`, `template`, `uuid`) VALUES (?, ?, ?, ?, ?, ?)",
-                    (item["nama"], item["jabatan"], '***', item["card_id"], item["template"], item["uuid"])
-                )
-                cur.close()
-                db.commit()
-            except Exception as e:
-                logger.debug("Saving to local database FAILED! " + str(e))
-                continue
+            cur.execute(
+                "INSERT INTO `karyawan` (`nama`, `jabatan`, `fp_id`, `card_id`, `template`, `uuid`) VALUES (?, ?, ?, ?, ?, ?)",
+                (item["nama"], item["jabatan"], '***', item["card_id"], item["template"], item["uuid"])
+            )
 
-            logger.debug("Saving to local database SUCCESS!")
+        cur.close()
+        db.commit()
 
         # hapus user kalau ada yg dihapus
+        deleted_uuids = []
         for i in uuids:
             if i not in server_uuids:
-                logger.debug("Deleting user with uuid " + i)
-                # untuk menghapus template
-                cur = db.cursor()
-                cur.execute("SELECT `fp_id` FROM `karyawan` WHERE `uuid` = ?", (i,))
-                result = cur.fetchone()
-                cur.close()
+                deleted_uuids.append(i)
 
-                if result:
-                    cur = db.cursor()
-                    cur.execute("DELETE FROM `karyawan` WHERE `uuid` = ?", (i,))
-                    cur.close()
-                    db.commit()
+        if len(deleted_uuids) > 0:
+            logger.debug("Deleting " + str(len(deleted_uuids)) + " user(s)...")
+            cur = db.cursor()
+            cur.execute(
+                "DELETE FROM `karyawan` WHERE `uuid` IN (?)",
+                (','.join(deleted_uuids),)
+            )
+            cur.close()
+            db.commit()
 
     def update_clock(self):
         self.tanggal.setText(time.strftime("%d %b %Y"))
         self.jam.setText(time.strftime("%H:%M:%S"))
 
+    def play_audio(self, audio_file, loops=0):
+        audio = os.path.join(os.path.dirname(__file__), audio_file)
+        if os.path.isfile(audio):
+            mixer.music.load(audio)
+            mixer.music.play(loops)
+
     def buka_pintu(self, karyawan=None):
+        self.play_audio('silakan_masuk.ogg')
+
         if karyawan:
             nama = karyawan[1].upper()
         else:
@@ -170,6 +169,7 @@ class Main(QtGui.QWidget, main_ui.Ui_Form):
         if timeout:
             GPIO.output(config["gpio_pin"]["relay"], 0)
             self.info.setText("WAKTU HABIS")
+            self.play_audio("waktu_habis.ogg")
             time.sleep(2)
             self.info.setText("TEMPELKAN JARI ATAU KARTU ANDA")
             return
@@ -206,6 +206,8 @@ class Main(QtGui.QWidget, main_ui.Ui_Form):
                 if not alarm:
                     GPIO.output(config["gpio_pin"]["alarm"], 1)
                     self.info.setText("MOHON TUTUP PINTU")
+                    self.play_audio('mohon_tutup_pintu.ogg')
+                    self.play_audio('alarm.ogg', -1)
                     alarm = True
 
                 time.sleep(0.2)
@@ -216,6 +218,12 @@ class Main(QtGui.QWidget, main_ui.Ui_Form):
         # turn off alarm
         if alarm:
             GPIO.output(config["gpio_pin"]["alarm"], 0)
+
+            try:
+                mixer.music.stop()
+            except Exception as e:
+                pass
+
         # tutup pintu
         GPIO.output(config["gpio_pin"]["relay"], 0)
 
@@ -233,6 +241,32 @@ class Main(QtGui.QWidget, main_ui.Ui_Form):
             logger.debug("SUKSES mengirim log ke server")
         else:
             logger.debug("GAGAL mengirim log ke server")
+
+        # ambil data ke server barangkali ada yg update
+        try:
+            r = requests.get(config["api_url"] + "staff/" + result[2], timeout=3)
+        except Exception as e:
+            logger.debug(str(e))
+            return
+
+        if r.status_code != requests.codes.ok:
+            return
+
+        try:
+            staff = r.json()
+        except Exception as e:
+            logger.debug(str(e))
+            return
+
+        if staff['updated_at'] > result[3]:
+            logger.debug("Updating user data...")
+            cur = db.cursor()
+            cur.execute(
+                "UPDATE `karyawan` SET `nama` = ?, `jabatan` = ?, `last_update` = ? WHERE `uuid` = ?",
+                (staff["nama"], staff["jabatan"], staff["uuid"], staff["updated_at"])
+            )
+            cur.close()
+            db.commit()
 
 
 class ScanCardThread(QtCore.QThread):
@@ -261,6 +295,7 @@ class ScanCardThread(QtCore.QThread):
             if uid is "no_card":
                 continue
 
+            self.emit(QtCore.SIGNAL('playAudio'), "beep.ogg")
             card_id = str(binascii.hexlify(uid))
 
             cur = db.cursor()
@@ -273,6 +308,7 @@ class ScanCardThread(QtCore.QThread):
                 self.emit(QtCore.SIGNAL('updateInfo'), "TEMPELKAN JARI ATAU KARTU ANDA")
             else:
                 self.emit(QtCore.SIGNAL('updateInfo'), "KARTU TIDAK TERDAFTAR")
+                self.emit(QtCore.SIGNAL('playAudio'), "kartu_tidak_terdaftar.ogg")
                 time.sleep(2)
                 self.emit(QtCore.SIGNAL('updateInfo'), "TEMPELKAN JARI ATAU KARTU ANDA")
 
@@ -320,6 +356,7 @@ class ScanFingerThread(QtCore.QThread):
                 try:
                     fp_id = self.save_template(item[1])
                 except Exception as e:
+                    logger.error("Failed to save template." + str(e))
                     continue
 
                 if fp_id >= 0:
@@ -333,11 +370,14 @@ class ScanFingerThread(QtCore.QThread):
             try:
                 self.read_image()
             except Exception as e:
+                logger.error("Fingerprint error. " + str(e))
                 continue
 
             # skip when door is opened
             if GPIO.input(config["gpio_pin"]["sensor_pintu"]) != config["features"]["sensor_pintu"]["default_state"]:
                 continue
+
+            self.emit(QtCore.SIGNAL('playAudio'), "beep.ogg")
 
             try:
                 fp.convertImage(0x01)
@@ -355,16 +395,18 @@ class ScanFingerThread(QtCore.QThread):
 
             if fp_id == -1:
                 self.emit(QtCore.SIGNAL('updateInfo'), "SIDIK JARI TIDAK DITEMUKAN")
+                self.emit(QtCore.SIGNAL('playAudio'), "sidik_jari_tidak_ditemukan.ogg")
                 time.sleep(2)
                 continue
 
             cur = db.cursor()
-            cur.execute("SELECT * FROM karyawan WHERE `fp_id` = ?", (fp_id,))
+            cur.execute("SELECT `id`, `nama`, `uuid`, `last_update` FROM karyawan WHERE `fp_id` = ?", (fp_id,))
             result = cur.fetchone()
             cur.close()
 
             if not result:
                 self.emit(QtCore.SIGNAL('updateInfo'), "HAK AKSES ANDA TELAH DICABUT")
+                self.emit(QtCore.SIGNAL('playAudio'), "hak_akses_dicabut.ogg")
 
                 try:
                     fp.deleteTemplate(fp_id)
@@ -942,6 +984,7 @@ if __name__ == "__main__":
             `template1` text NULL, \
             `uuid` varchar(50) NULL, \
             `active` boolean default 1, \
+            `last_update` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP, \
             `waktu_daftar` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP)");
 
         db.execute("CREATE TABLE IF NOT EXISTS `log` ( \
@@ -963,6 +1006,7 @@ if __name__ == "__main__":
     GPIO.setup(config["gpio_pin"]["saklar_manual"], GPIO.IN, pull_up_down=GPIO.PUD_UP)
 
     if len(sys.argv) > 1 and sys.argv[1] == "run":
+        mixer.init()
         logger.debug("Starting GUI...")
         app = QtGui.QApplication(sys.argv)
         ui = Main()
