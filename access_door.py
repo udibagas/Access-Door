@@ -286,9 +286,6 @@ class ScanCardThread(QtCore.QThread):
     def run(self):
         self.emit(QtCore.SIGNAL('updateInfo'), "TEMPELKAN JARI ATAU KARTU ANDA")
         while not self.exiting:
-            if GPIO.input(config["gpio_pin"]["sensor_pintu"]) != config["features"]["sensor_pintu"]["default_state"]:
-                continue
-
             try:
                 uid = pn532.read_passive_target()
             except Exception as e:
@@ -298,6 +295,9 @@ class ScanCardThread(QtCore.QThread):
                 continue
 
             if uid is "no_card":
+                continue
+
+            if GPIO.input(config["gpio_pin"]["sensor_pintu"]) != config["features"]["sensor_pintu"]["default_state"]:
                 continue
 
             self.emit(QtCore.SIGNAL('playAudio'), "beep.ogg")
