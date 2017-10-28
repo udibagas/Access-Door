@@ -132,8 +132,8 @@ class Main(QtGui.QWidget, main_ui.Ui_Form):
 
             # edit user kalau waktu update beda
             if item["uuid"] in local_uuids:
-                logger.debug("Updating " + item["nama"] + "...")
                 if item["updated_at"] > local_users[item["uuid"]]["last_update"]:
+                    logger.debug("Updating " + item["nama"] + "...")
                     cur.execute(
                         "UPDATE `karyawan` SET `nama` = ?, `jabatan` = ?, `last_update` = ? WHERE `uuid` = ?",
                         (item["nama"], item["jabatan"], item["updated_at"], item["uuid"])
@@ -812,6 +812,13 @@ class Console():
                     print "Bye"
                     exit()
                 elif cmd == "run":
+                    message = "Starting GUI..."
+                    print message
+                    logger.debug(message)
+                    break
+
+                    mixer.init()
+                    subprocess.call(["export", "DISPLAY=:0"])
                     app = QtGui.QApplication(sys.argv)
                     ui = Main()
                     sys.exit(app.exec_())
@@ -965,6 +972,12 @@ if __name__ == "__main__":
         sys.exit(app.exec_())
 
     else:
+        try:
+            logger.info("Closing GUI...")
+            ui.close()
+        except Exception as e:
+            pass
+
         logger.debug("Starting console app...")
         console = Console()
         console.run()
