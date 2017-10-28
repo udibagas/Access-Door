@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 
-# Form implementation generated from reading ui file 'main1.ui'
+# Form implementation generated from reading ui file 'main.ui'
 #
 # Created by: PyQt4 UI code generator 4.11.4
 #
@@ -85,6 +85,12 @@ class Ui_Form(object):
         self.verticalLayout.addWidget(self.jam)
         spacerItem4 = QtGui.QSpacerItem(20, 40, QtGui.QSizePolicy.Minimum, QtGui.QSizePolicy.Expanding)
         self.verticalLayout.addItem(spacerItem4)
+        self.fp_image = QtGui.QLabel(Form)
+        self.fp_image.setText(_fromUtf8(""))
+        self.fp_image.setObjectName(_fromUtf8("fp_image"))
+        self.verticalLayout.addWidget(self.fp_image)
+        spacerItem5 = QtGui.QSpacerItem(20, 40, QtGui.QSizePolicy.Minimum, QtGui.QSizePolicy.Expanding)
+        self.verticalLayout.addItem(spacerItem5)
         self.info = QtGui.QLabel(Form)
         font = QtGui.QFont()
         font.setPointSize(12)
@@ -96,8 +102,8 @@ class Ui_Form(object):
         self.info.setWordWrap(True)
         self.info.setObjectName(_fromUtf8("info"))
         self.verticalLayout.addWidget(self.info)
-        spacerItem5 = QtGui.QSpacerItem(20, 40, QtGui.QSizePolicy.Minimum, QtGui.QSizePolicy.Expanding)
-        self.verticalLayout.addItem(spacerItem5)
+        spacerItem6 = QtGui.QSpacerItem(20, 40, QtGui.QSizePolicy.Minimum, QtGui.QSizePolicy.Expanding)
+        self.verticalLayout.addItem(spacerItem6)
         self.horizontalLayout.addLayout(self.verticalLayout)
 
         self.retranslateUi(Form)

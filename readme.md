@@ -57,12 +57,6 @@ static domain_name_servers=[DNS Server]
 $ sudo dpkg-reconfigure tzdata
 ```
 
-atau
-
-```
-$ sudo tzselect
-```
-
 Pilih sesuai area setempat
 
 ## Setting Monitor 3.5"
@@ -122,6 +116,7 @@ $ sudo reboot
 ```
 $ sudo apt install python-pysqlite2 python-texttable python-qt4
 $ sudo pip install terminaltables
+$ sudo pip install pygame
 ```
 
 Install pyfingerprint.
