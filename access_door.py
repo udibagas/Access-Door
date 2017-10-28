@@ -145,7 +145,7 @@ class Main(QtGui.QWidget, main_ui.Ui_Form):
             try:
                 mixer.music.load(audio)
             except Exception as e:
-                logger.debug(str(e))
+                logger.debug("Failed to play " + audio_file + " : " + str(e))
                 return
             mixer.music.play(loops)
 
