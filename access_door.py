@@ -857,6 +857,14 @@ if __name__ == "__main__":
     log_file_path = os.path.join(os.path.dirname(__file__), 'access_door.log')
     config_file_path = os.path.join(os.path.dirname(__file__), 'config.json')
 
+    try:
+        print "Reading config file..."
+        with open(config_file_path) as config_file:
+            config = json.load(config_file)
+    except Exception as e:
+        print "Gagal membuka file konfigurasi (config.json). " + str(e)
+        exit()
+
     log_level = {
         "NOTSET": 0,
         "DEBUG": 10,
@@ -867,24 +875,12 @@ if __name__ == "__main__":
     }
 
     logger = logging.getLogger(__name__)
-    logger.setLevel(logging.DEBUG)
+    logger.setLevel(config["log_level"])
     handler = logging.handlers.RotatingFileHandler(log_file_path, maxBytes=1024000, backupCount=100)
-    handler.setLevel(logging.DEBUG)
+    handler.setLevel(config["log_level"])
     formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
     handler.setFormatter(formatter)
     logger.addHandler(handler)
-
-    logger.debug("Starting application...")
-
-    try:
-        logger.debug("Reading config file...")
-        with open(config_file_path) as config_file:
-            config = json.load(config_file)
-    except Exception as e:
-        message = "Gagal membuka file konfigurasi (config.json). " + str(e)
-        logger.error(message)
-        print message
-        exit()
 
     use_nfc = False
     use_fp = False
