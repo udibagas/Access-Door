@@ -142,7 +142,11 @@ class Main(QtGui.QWidget, main_ui.Ui_Form):
     def play_audio(self, audio_file, loops=0):
         audio = os.path.join(os.path.dirname(__file__), audio_file)
         if os.path.isfile(audio):
-            mixer.music.load(audio)
+            try:
+                mixer.music.load(audio)
+            except Exception as e:
+                logger.debug(str(e))
+                return
             mixer.music.play(loops)
 
     def buka_pintu(self, karyawan=None):
