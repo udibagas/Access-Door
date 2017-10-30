@@ -129,9 +129,9 @@ class Main(QtGui.QWidget, main_ui.Ui_Form):
             # tambah user kalau ada yang baru
             logger.debug("Adding " + item["nama"] + " to local database...")
             cur.execute(
-                "INSERT INTO `karyawan` (`nama`, `jabatan`, `fp_id`, `fp_id1`, `card_id`, `template`, `uuid`, `active`, `last_update`) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                (item["nama"], item["jabatan"], '-1', '-1', item["card_id"], item["template"], item["uuid"], item["active"], item["updated_at"])
+                "INSERT INTO `karyawan` (`nama`, `jabatan`, `card_id`, `template`, `template1`, `uuid`, `active`, `last_update`) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                (item["nama"], item["jabatan"], item["card_id"], item["template"], item["template1"], item["uuid"], item["active"], item["updated_at"])
             )
 
         cur.close()
@@ -326,9 +326,13 @@ class ScanFingerThread(QtCore.QThread):
         try:
             template = json.loads(tpl)
             fp.uploadCharacteristics(0x01, template)
-            return fp.storeTemplate()
+            fp_id = fp.storeTemplate()
+            logger.debug("sukes menyimpan template di #" + str(fp_id))
+            return fp_id
         except Exception as e:
-            raise Exception("Failed to store template to fingerprint reader. " + str(e))
+            message = "Failed to store template to fingerprint reader. " + str(e)
+            logger.debug(message)
+            raise Exception(message)
 
         return -1
 
@@ -348,14 +352,13 @@ class ScanFingerThread(QtCore.QThread):
             for row, item in enumerate(results):
                 try:
                     fp_id = []
-                    fp_id[0] = self.save_template(item[1])
-                    fp_id[1] = self.save_template(item[2])
+                    fp_id.append(self.save_template(item[1]))
+                    fp_id.append(self.save_template(item[2]))
 
                     if fp_id[0] >= 0 or fp_id[1] >= 0:
                         cur.execute("UPDATE `karyawan` SET `fp_id` = ?, `fp_id1` = ? WHERE `id` = ?", (fp_id[0], fp_id[1], item[0]))
 
                 except Exception as e:
-                    logger.error("Failed to save template." + str(e))
                     continue
 
             cur.close()
@@ -940,8 +943,8 @@ if __name__ == "__main__":
             `id` INTEGER PRIMARY KEY AUTOINCREMENT, \
             `nama` varchar(30) NOT NULL, \
             `jabatan` varchar(30) NOT NULL, \
-            `fp_id` varchar(20) NULL, \
-            `fp_id1` varchar(20) NULL, \
+            `fp_id` varchar(20) NULL DEFAULT -1, \
+            `fp_id1` varchar(20) NULL DEFAULT -1, \
             `card_id` varchar(20) NULL, \
             `template` text NULL, \
             `template1` text NULL, \
