@@ -391,8 +391,8 @@ class ScanFingerThread(QtCore.QThread):
             cur = db.cursor()
             cur.execute(
                 "SELECT `id`, `nama`, `jabatan`, `active`, `allow` \
-                FROM karyawan WHERE `fp_id` = ?",
-                (fp_id,)
+                FROM karyawan WHERE `fp_id` = ? OR `fp_id1`= ?",
+                (fp_id, fp_id)
             )
             result = cur.fetchone()
             cur.close()
