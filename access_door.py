@@ -129,9 +129,9 @@ class Main(QtGui.QWidget, main_ui.Ui_Form):
             # tambah user kalau ada yang baru
             logger.debug("Adding " + item["nama"] + " to local database...")
             cur.execute(
-                "INSERT INTO `karyawan` (`nama`, `jabatan`, `fp_id`, `card_id`, `template`, `uuid`, `active`, `last_update`) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-                (item["nama"], item["jabatan"], '***', item["card_id"], item["template"], item["uuid"], item["active"], item["updated_at"])
+                "INSERT INTO `karyawan` (`nama`, `jabatan`, `fp_id`, `fp_id1`, `card_id`, `template`, `uuid`, `active`, `last_update`) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                (item["nama"], item["jabatan"], '-1', '-1', item["card_id"], item["template"], item["uuid"], item["active"], item["updated_at"])
             )
 
         cur.close()
@@ -293,23 +293,21 @@ class ScanCardThread(QtCore.QThread):
                 self.emit(QtCore.SIGNAL('updateInfo'), "KARTU TIDAK TERDAFTAR")
                 play_audio("kartu_tidak_terdaftar.ogg")
                 time.sleep(3)
-                self.emit(QtCore.SIGNAL('updateInfo'), "TEMPELKAN JARI ATAU KARTU ANDA")
 
             elif result[3] == 0:
                 self.emit(QtCore.SIGNAL('updateInfo'), "AKUN ANDA NON AKTIF")
                 play_audio("akun_non_aktif.ogg")
                 time.sleep(3)
-                self.emit(QtCore.SIGNAL('updateInfo'), "TEMPELKAN JARI ATAU KARTU ANDA")
 
             elif result[4] == 0:
                 self.emit(QtCore.SIGNAL('updateInfo'), "ANDA TIDAK DIPERKENANKAN MENGAKSES RUANGAN INI")
                 play_audio("access_denied.ogg")
                 time.sleep(3)
-                self.emit(QtCore.SIGNAL('updateInfo'), "TEMPELKAN JARI ATAU KARTU ANDA")
 
             else:
                 ui.buka_pintu(result)
-                self.emit(QtCore.SIGNAL('updateInfo'), "TEMPELKAN JARI ATAU KARTU ANDA")
+
+            self.emit(QtCore.SIGNAL('updateInfo'), "TEMPELKAN JARI ATAU KARTU ANDA")
 
 
 class ScanFingerThread(QtCore.QThread):
@@ -338,7 +336,7 @@ class ScanFingerThread(QtCore.QThread):
     def run(self):
         while not self.exiting:
             cur = db.cursor()
-            cur.execute("SELECT `id`, `template` FROM `karyawan` WHERE `fp_id` = '***' OR `fp_id` IS NULL OR `fp_id` = ''")
+            cur.execute("SELECT `id`, `template`, `template1` FROM `karyawan` WHERE `fp_id` = '-1' OR `fp_id1` = '-1'")
             results = cur.fetchall()
             cur.close()
 
@@ -346,10 +344,12 @@ class ScanFingerThread(QtCore.QThread):
 
             for row, item in enumerate(results):
                 try:
-                    fp_id = self.save_template(item[1])
+                    fp_id = []
+                    fp_id[0] = self.save_template(item[1])
+                    fp_id[1] = self.save_template(item[2])
 
-                    if fp_id >= 0:
-                        cur.execute("UPDATE `karyawan` SET `fp_id` = ? WHERE `id` = ?", (fp_id, item[0]))
+                    if fp_id[0] >= 0 or fp_id[1] >= 0:
+                        cur.execute("UPDATE `karyawan` SET `fp_id` = ?, `fp_id1` = ? WHERE `id` = ?", (fp_id[0], fp_id[1], item[0]))
 
                 except Exception as e:
                     logger.error("Failed to save template." + str(e))
@@ -451,8 +451,8 @@ class Console():
         nama = raw_input("Nama: ")
         jabatan = raw_input("Jabatan: ")
         card_id = '***'
-        fp_id = '***'
-        template = None
+        fp_id = []
+        template = []
         daftar_apa = 0
         daftar_sidik_jari = 1
         daftar_kartu = 2
@@ -470,54 +470,62 @@ class Console():
                 continue
 
         if use_fp and (daftar_apa == daftar_sidik_jari or daftar_apa == daftar_semua):
-            print('Tempelkan jari Anda...')
 
-            while not fp.readImage():
-                time.sleep(config["timer"]["scan"])
+            for i in range(0,2):
+                print('Tempelkan jari Anda...')
 
-            try:
-                fp.convertImage(0x01)
-                result = fp.searchTemplate()
-            except Exception as e:
-                print "Failed to search template. " + str(e)
-                return
+                while not fp.readImage():
+                    time.sleep(config["timer"]["scan"])
 
-            positionNumber = result[0]
+                try:
+                    fp.convertImage(0x01)
+                    result = fp.searchTemplate()
+                except Exception as e:
+                    print "Failed to search template. " + str(e)
+                    return
 
-            if positionNumber >= 0:
-                print('Jari sudah terdaftar. Silakan ulangi kembali')
-                return
+                positionNumber = result[0]
 
-            print('Angkat jari...')
-            time.sleep(2)
+                if positionNumber >= 0:
+                    print('Jari sudah terdaftar. Silakan ulangi kembali')
+                    if i == 1:
+                        try:
+                            fp.deleteTemplate(fp_id[0])
+                        except Exception as e:
+                            pass
+                    return
 
-            print('Tempelkan jari yang sama...')
-            while not fp.readImage():
-                time.sleep(config["timer"]["scan"])
+                print('Angkat jari...')
+                time.sleep(3)
 
-            try:
-                fp.convertImage(0x02)
-            except Exception as e:
-                print "Error convert image on buffer 0x02. " + str(e)
-                return
+                print('Tempelkan jari yang sama...')
+                while not fp.readImage():
+                    time.sleep(config["timer"]["scan"])
 
-            if not fp.compareCharacteristics():
-                print "Sidik jari tidak sama. Silakan ulangi kembali"
-                return
+                try:
+                    fp.convertImage(0x02)
+                except Exception as e:
+                    print "Error convert image on buffer 0x02. " + str(e)
+                    return
 
-            try:
-                fp.createTemplate()
-                fp_id = fp.storeTemplate()
-            except Exception as e:
-                print "Failed to store template." + str(e)
-                return
+                if not fp.compareCharacteristics():
+                    print "Sidik jari tidak sama. Silakan ulangi kembali"
+                    return
 
-            try:
-                fp.loadTemplate(fp_id, 0x01)
-                template = json.dumps(fp.downloadCharacteristics(0x01))
-            except Exception as e:
-                print "Failed to download template. Template will be generated next time."
-                template = None
+                try:
+                    fp.createTemplate()
+                    fp_id.append(fp.storeTemplate())
+                except Exception as e:
+                    print "Failed to store template." + str(e)
+                    fp_id.append("-1")
+                    return
+
+                try:
+                    fp.loadTemplate(fp_id[i], 0x01)
+                    template.append(json.dumps(fp.downloadCharacteristics(0x01)))
+                except Exception as e:
+                    print "Failed to download template. " + str(e)
+                    template.append("")
 
         if use_nfc and (daftar_apa == daftar_kartu or daftar_apa == daftar_semua):
             print "Tempelkan kartu..."
@@ -534,7 +542,10 @@ class Console():
                 break
 
             cur = db.cursor()
-            cur.execute("SELECT * FROM `karyawan` WHERE card_id = ?", (card_id,))
+            cur.execute(
+                "SELECT `nama` ,`fp_id`, `fp_id1` FROM `karyawan` WHERE card_id = ?",
+                (card_id,)
+            )
             result = cur.fetchone()
             cur.close()
 
@@ -542,12 +553,13 @@ class Console():
                 print "Kartu sudah terdaftar atas nama " + result[1]
 
                 try:
-                    fp.deleteTemplate(fp_id)
+                    fp.deleteTemplate(int(result[1]))
+                    fp.deleteTemplate(int(result[2]))
                 except Exception as e:
                     print "Failed to delete template. " + str(e)
                     return
 
-        if fp_id == "***" and card_id == "***":
+        if fp_id[0] == "-1" and card_id == "***":
             print "Pendaftaran GAGAL. Gagal membaca sidik jari dan kartu."
             return
 
@@ -556,8 +568,10 @@ class Console():
         try:
             cur = db.cursor()
             cur.execute(
-                "INSERT INTO `karyawan` (`nama`, `jabatan`, `fp_id`, `card_id`, `template`, `uuid`) VALUES (?, ?, ?, ?, ?, ?)",
-                (nama, jabatan, fp_id, card_id, template, UUID)
+                "INSERT INTO `karyawan` \
+                (`nama`, `jabatan`, `fp_id`, `fp_id1`, `card_id`, `template`, `template1`, `uuid`) \
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                (nama, jabatan, fp_id[0], fp_id[1], card_id, template[0], template[1], UUID)
             )
             cur.close()
             db.commit()
@@ -569,9 +583,9 @@ class Console():
         data = {
             "nama": nama,
             "jabatan": jabatan,
-            "fp_id": fp_id,
             "card_id": card_id,
-            "template": template,
+            "template": template[0],
+            "template1": template[1],
             "uuid": UUID
         }
         print "Syncing staff data to server..."
@@ -588,16 +602,16 @@ class Console():
     def list(self):
         cur = db.cursor()
         cur.execute(
-            "SELECT `id`, `nama`, `jabatan`, `fp_id`, `card_id`, datetime(`waktu_daftar`, 'localtime') "
+            "SELECT `id`, `nama`, `jabatan`, datetime(`waktu_daftar`, 'localtime'), datetime(`last_update`, 'localtime') "
             "FROM `karyawan` ORDER BY `nama` ASC"
         )
         result = cur.fetchall()
         cur.close()
 
-        data = [["ID", "NAMA", "JABATAN", "FINGERPRINT ID", "CARD ID", "WAKTU DAFTAR"]]
+        data = [["ID", "NAMA", "JABATAN", "WAKTU DAFTAR", "LAST UPDATE"]]
 
         for row, item in enumerate(result):
-            data.append([str(item[0]), item[1], item[2], item[3], item[4], item[5]])
+            data.append([str(item[0]), item[1], item[2], item[3], item[4]])
 
         table = AsciiTable(data)
         print table.table
@@ -613,7 +627,7 @@ class Console():
         result = cur.fetchall()
         cur.close()
 
-        data = [["WAKTU MASUK", "NAMA", "JABATAN"]]
+        data = [["WAKTU AKSES", "NAMA", "JABATAN"]]
 
         for row, item in enumerate(result):
             data.append([str(item[0]), item[1], item[2]])
@@ -657,7 +671,7 @@ class Console():
             return
 
         cur = db.cursor()
-        cur.execute("SELECT `id`, `nama`, `jabatan`, `fp_id`, `card_id`, `waktu_daftar`, `uuid` FROM `karyawan` WHERE id = ?", (id_karyawan,))
+        cur.execute("SELECT `id`, `nama`, `jabatan`, `uuid` FROM `karyawan` WHERE id = ?", (id_karyawan,))
         result = cur.fetchone()
         cur.close()
 
@@ -666,8 +680,8 @@ class Console():
             return
 
         data = [
-            ["ID", "NAMA", "JABATAN", "FINGERPRINT ID", "CARD ID", "WAKTU DAFTAR"],
-            [str(result[0]), result[1], result[2], result[3], result[4], result[5]]
+            ["ID", "NAMA", "JABATAN", "WAKTU DAFTAR"],
+            [str(result[0]), result[1], result[2], result[3]]
         ]
 
         table = AsciiTable(data)
@@ -695,7 +709,7 @@ class Console():
             return
 
         cur = db.cursor()
-        cur.execute("SELECT `id`, `nama`, `jabatan`, `fp_id`, `card_id`, `template`, `uuid` FROM `karyawan`")
+        cur.execute("SELECT `id`, `nama`, `jabatan`, `card_id`, `template`, `template1`, `uuid` FROM `karyawan`")
         results = cur.fetchall()
         cur.close()
 
@@ -703,9 +717,9 @@ class Console():
             data = {
                 "nama": item[1],
                 "jabatan": item[2],
-                "fp_id": item[3],
-                "card_id": item[4],
-                "template": item[5],
+                "card_id": item[3],
+                "template": item[4],
+                "template1": item[5],
                 "uuid": item[6]
             }
             print "Syncing " + item[1] + "..."
