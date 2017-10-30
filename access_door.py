@@ -285,17 +285,24 @@ class ScanCardThread(QtCore.QThread):
             card_id = str(binascii.hexlify(uid))
 
             cur = db.cursor()
-            cur.execute("SELECT * FROM karyawan WHERE `card_id` = ?", (card_id,))
+            cur.execute("SELECT `id`, `nama`, `jabatan`, `active` FROM karyawan WHERE `card_id` = ?", (card_id,))
             result = cur.fetchone()
             cur.close()
 
-            if result:
-                ui.buka_pintu(result)
-                self.emit(QtCore.SIGNAL('updateInfo'), "TEMPELKAN JARI ATAU KARTU ANDA")
-            else:
+            if result is None:
                 self.emit(QtCore.SIGNAL('updateInfo'), "KARTU TIDAK TERDAFTAR")
                 play_audio("kartu_tidak_terdaftar.ogg")
                 time.sleep(3)
+                self.emit(QtCore.SIGNAL('updateInfo'), "TEMPELKAN JARI ATAU KARTU ANDA")
+
+            elif result[3] == 0:
+                self.emit(QtCore.SIGNAL('updateInfo'), "AKUN ANDA NON AKTIF")
+                play_audio("akun_non_aktif.ogg")
+                time.sleep(3)
+                self.emit(QtCore.SIGNAL('updateInfo'), "TEMPELKAN JARI ATAU KARTU ANDA")
+
+            else:
+                ui.buka_pintu(result)
                 self.emit(QtCore.SIGNAL('updateInfo'), "TEMPELKAN JARI ATAU KARTU ANDA")
 
 
@@ -337,7 +344,7 @@ class ScanFingerThread(QtCore.QThread):
 
                     if fp_id >= 0:
                         cur.execute("UPDATE `karyawan` SET `fp_id` = ? WHERE `id` = ?", (fp_id, item[0]))
-                        
+
                 except Exception as e:
                     logger.error("Failed to save template." + str(e))
                     continue
@@ -910,6 +917,7 @@ if __name__ == "__main__":
             `template1` text NULL, \
             `uuid` varchar(50) NULL, \
             `active` boolean default 1, \
+            `allow` boolean default 1, \
             `last_update` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP, \
             `waktu_daftar` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP)");
 
