@@ -62,7 +62,7 @@
       </spacer>
      </item>
      <item>
-      <widget class="QLabel" name="pemkab">
+      <widget class="QLabel" name="instansi">
        <property name="font">
         <font>
          <pointsize>10</pointsize>
@@ -168,9 +168,12 @@
       </spacer>
      </item>
      <item>
-      <widget class="QLabel" name="fp_image">
+      <widget class="QLabel" name="status_img">
        <property name="text">
         <string/>
+       </property>
+       <property name="alignment">
+        <set>Qt::AlignCenter</set>
        </property>
       </widget>
      </item>

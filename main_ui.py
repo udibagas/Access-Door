@@ -85,10 +85,11 @@ class Ui_Form(object):
         self.verticalLayout.addWidget(self.jam)
         spacerItem4 = QtGui.QSpacerItem(20, 40, QtGui.QSizePolicy.Minimum, QtGui.QSizePolicy.Expanding)
         self.verticalLayout.addItem(spacerItem4)
-        self.fp_image = QtGui.QLabel(Form)
-        self.fp_image.setText(_fromUtf8(""))
-        self.fp_image.setObjectName(_fromUtf8("fp_image"))
-        self.verticalLayout.addWidget(self.fp_image)
+        self.status_img = QtGui.QLabel(Form)
+        self.status_img.setText(_fromUtf8(""))
+        self.status_img.setAlignment(QtCore.Qt.AlignCenter)
+        self.status_img.setObjectName(_fromUtf8("status_img"))
+        self.verticalLayout.addWidget(self.status_img)
         spacerItem5 = QtGui.QSpacerItem(20, 40, QtGui.QSizePolicy.Minimum, QtGui.QSizePolicy.Expanding)
         self.verticalLayout.addItem(spacerItem5)
         self.info = QtGui.QLabel(Form)
@@ -111,7 +112,8 @@ class Ui_Form(object):
 
     def retranslateUi(self, Form):
         Form.setWindowTitle(_translate("Form", "Form", None))
-        self.instansi.setText(_translate("Form", "", None))
+        self.instansi.setText(_translate("Form", "KABUPATEN PURWAKARTA", None))
         self.tanggal.setText(_translate("Form", "tanggal", None))
         self.jam.setText(_translate("Form", "jam", None))
         self.info.setText(_translate("Form", "info", None))
+

@@ -48,18 +48,26 @@ class Main(QtGui.QWidget, main_ui.Ui_Form):
         if use_fp:
             self.scan_finger_thread = ScanFingerThread()
             self.connect(self.scan_finger_thread, QtCore.SIGNAL('updateInfo'), self.update_info)
+            self.connect(self.scan_finger_thread, QtCore.SIGNAL('updateImage'), self.update_image)
             self.scan_finger_thread.start()
 
         if use_nfc:
             self.scan_card_thread = ScanCardThread()
             self.connect(self.scan_card_thread, QtCore.SIGNAL('updateInfo'), self.update_info)
+            self.connect(self.scan_card_thread, QtCore.SIGNAL('updateImage'), self.update_image)
             self.scan_card_thread.start()
 
         self.open_manual_thread = OpenManualThread()
+        self.connect(self.open_manual_thread, QtCore.SIGNAL('updateImage'), self.update_image)
         self.open_manual_thread.start()
+
+        self.connect(self, QtCore.SIGNAL('updateImage'), self.update_image)
 
     def update_info(self, info):
         self.info.setText(info)
+
+    def update_image(self, image):
+        self.status_img.setPixmap(QtGui.QPixmap(os.path.join(os.path.dirname(__file__), image)))
 
     def update_clock(self):
         self.tanggal.setText(time.strftime("%d %b %Y"))
@@ -179,15 +187,15 @@ class Main(QtGui.QWidget, main_ui.Ui_Form):
         if timeout:
             GPIO.output(config["gpio_pin"]["relay"], 0)
             self.info.setText("WAKTU HABIS")
+            self.emit(QtCore.SIGNAL('updateImage'), "img/time-80.png")
             play_audio("waktu_habis.ogg")
             time.sleep(3)
-            self.info.setText("TEMPELKAN JARI ATAU KARTU ANDA")
             return
 
         if karyawan:
             cur = db.cursor()
             cur.execute("INSERT INTO `log` (`karyawan_id`) VALUES (?)", (karyawan[0],))
-            cur.execute("UPDATE `karyawan` SET `last_access` = CURRENT_TIMESTAMP WHERE `id` = ?", (karyawan[0]))
+            cur.execute("UPDATE `karyawan` SET `last_access` = ? WHERE `id` = ?", (str(datetime.now()), karyawan[0]))
             cur.close()
             db.commit()
 
@@ -218,6 +226,7 @@ class Main(QtGui.QWidget, main_ui.Ui_Form):
                 if not alarm:
                     GPIO.output(config["gpio_pin"]["alarm"], 1)
                     self.info.setText("MOHON TUTUP PINTU")
+                    self.emit(QtCore.SIGNAL('updateImage'), "img/pintu-80.png")
                     play_audio('mohon_tutup_pintu.ogg')
                     time.sleep(3)
                     play_audio('beep.ogg', -1)
@@ -294,22 +303,27 @@ class ScanCardThread(QtCore.QThread):
 
             if result is None:
                 self.emit(QtCore.SIGNAL('updateInfo'), "KARTU TIDAK TERDAFTAR")
+                self.emit(QtCore.SIGNAL('updateImage'), "img/wrong-80.png")
                 play_audio("kartu_tidak_terdaftar.ogg")
                 time.sleep(3)
 
             elif result[3] == 0:
                 self.emit(QtCore.SIGNAL('updateInfo'), "AKUN ANDA NON AKTIF")
+                self.emit(QtCore.SIGNAL('updateImage'), "img/wrong-80.png")
                 play_audio("akun_non_aktif.ogg")
                 time.sleep(3)
 
             elif result[4] == 0:
                 self.emit(QtCore.SIGNAL('updateInfo'), "ANDA TIDAK DIPERKENANKAN MENGAKSES RUANGAN INI")
+                self.emit(QtCore.SIGNAL('updateImage'), "img/wrong-80.png")
                 play_audio("access_denied.ogg")
                 time.sleep(3)
 
             else:
+                self.emit(QtCore.SIGNAL('updateImage'), "img/right-80.png")
                 ui.buka_pintu(result)
 
+            self.emit(QtCore.SIGNAL('updateImage'), "img/scan-80.png")
             self.emit(QtCore.SIGNAL('updateInfo'), "TEMPELKAN JARI ATAU KARTU ANDA")
 
 
@@ -364,6 +378,7 @@ class ScanFingerThread(QtCore.QThread):
             cur.close()
             db.commit()
 
+            self.emit(QtCore.SIGNAL('updateImage'), "img/scan-80.png")
             self.emit(QtCore.SIGNAL('updateInfo'), "TEMPELKAN JARI ATAU KARTU ANDA")
 
             try:
@@ -389,6 +404,7 @@ class ScanFingerThread(QtCore.QThread):
 
             if fp_id == -1:
                 self.emit(QtCore.SIGNAL('updateInfo'), "SIDIK JARI TIDAK DITEMUKAN")
+                self.emit(QtCore.SIGNAL('updateImage'), "img/wrong-80.png")
                 play_audio("sidik_jari_tidak_ditemukan.ogg")
                 time.sleep(3)
                 continue
@@ -404,6 +420,7 @@ class ScanFingerThread(QtCore.QThread):
 
             if result is None:
                 self.emit(QtCore.SIGNAL('updateInfo'), "HAK AKSES ANDA TELAH DICABUT")
+                self.emit(QtCore.SIGNAL('updateImage'), "img/wrong-80.png")
                 play_audio("hak_akses_dicabut.ogg")
 
                 try:
@@ -415,15 +432,18 @@ class ScanFingerThread(QtCore.QThread):
 
             elif result[3] == 0:
                 self.emit(QtCore.SIGNAL('updateInfo'), "AKUN ANDA NON AKTIF")
+                self.emit(QtCore.SIGNAL('updateImage'), "img/wrong-80.png")
                 play_audio("akun_non_aktif.ogg")
                 time.sleep(3)
 
             elif result[4] == 0:
                 self.emit(QtCore.SIGNAL('updateInfo'), "ANDA TIDAK DIPERKENANKAN MENGAKSES RUANGAN INI")
+                self.emit(QtCore.SIGNAL('updateImage'), "img/wrong-80.png")
                 play_audio("access_denied.ogg")
                 time.sleep(3)
 
             else:
+                self.emit(QtCore.SIGNAL('updateImage'), "img/right-80.png")
                 ui.buka_pintu(result)
 
 
@@ -439,6 +459,9 @@ class OpenManualThread(QtCore.QThread):
     def run(self):
         while not self.exiting:
             if GPIO.input(config["gpio_pin"]["sensor_pintu"]) == config["features"]["sensor_pintu"]["default_state"] and not GPIO.input(config["gpio_pin"]["saklar_manual"]):
+                play_audio("beep.ogg")
+                time.sleep(0.2)
+                self.emit(QtCore.SIGNAL('updateImage'), "img/right-80.png")
                 ui.buka_pintu()
             else:
                 time.sleep(0.2)
@@ -849,7 +872,7 @@ def is_running():
 
 
 def play_audio(audio_file, loops=0):
-    audio = os.path.join(os.path.dirname(__file__), audio_file)
+    audio = os.path.join(os.path.dirname(__file__), "audio/" + audio_file)
     if os.path.isfile(audio):
         try:
             mixer.music.load(audio)
