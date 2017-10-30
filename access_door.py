@@ -285,7 +285,7 @@ class ScanCardThread(QtCore.QThread):
             card_id = str(binascii.hexlify(uid))
 
             cur = db.cursor()
-            cur.execute("SELECT `id`, `nama`, `jabatan`, `active` FROM karyawan WHERE `card_id` = ?", (card_id,))
+            cur.execute("SELECT `id`, `nama`, `jabatan`, `active`, `allow` FROM karyawan WHERE `card_id` = ?", (card_id,))
             result = cur.fetchone()
             cur.close()
 
@@ -298,6 +298,12 @@ class ScanCardThread(QtCore.QThread):
             elif result[3] == 0:
                 self.emit(QtCore.SIGNAL('updateInfo'), "AKUN ANDA NON AKTIF")
                 play_audio("akun_non_aktif.ogg")
+                time.sleep(3)
+                self.emit(QtCore.SIGNAL('updateInfo'), "TEMPELKAN JARI ATAU KARTU ANDA")
+
+            elif result[4] == 0:
+                self.emit(QtCore.SIGNAL('updateInfo'), "ANDA TIDAK DIPERKENANKAN MENGAKSES RUANGAN INI")
+                play_audio("access_denied.ogg")
                 time.sleep(3)
                 self.emit(QtCore.SIGNAL('updateInfo'), "TEMPELKAN JARI ATAU KARTU ANDA")
 
@@ -383,14 +389,14 @@ class ScanFingerThread(QtCore.QThread):
 
             cur = db.cursor()
             cur.execute(
-                "SELECT `id`, `nama`, `uuid`, `active`, `last_update` \
+                "SELECT `id`, `nama`, `jabatan`, `active`, `allow` \
                 FROM karyawan WHERE `fp_id` = ?",
                 (fp_id,)
             )
             result = cur.fetchone()
             cur.close()
 
-            if not result:
+            if result is None:
                 self.emit(QtCore.SIGNAL('updateInfo'), "HAK AKSES ANDA TELAH DICABUT")
                 play_audio("hak_akses_dicabut.ogg")
 
@@ -400,15 +406,19 @@ class ScanFingerThread(QtCore.QThread):
                     logger.debug("Template gagal dihapus." + str(e))
 
                 time.sleep(3)
-                continue
 
-            if result[3] == 0:
+            elif result[3] == 0:
                 self.emit(QtCore.SIGNAL('updateInfo'), "AKUN ANDA NON AKTIF")
                 play_audio("akun_non_aktif.ogg")
                 time.sleep(3)
-                continue
 
-            ui.buka_pintu(result)
+            elif result[4] == 0:
+                self.emit(QtCore.SIGNAL('updateInfo'), "ANDA TIDAK DIPERKENANKAN MENGAKSES RUANGAN INI")
+                play_audio("access_denied.ogg")
+                time.sleep(3)
+
+            else:
+                ui.buka_pintu(result)
 
 
 class OpenManualThread(QtCore.QThread):
