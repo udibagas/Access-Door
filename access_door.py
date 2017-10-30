@@ -161,6 +161,8 @@ class Main(QtGui.QWidget, main_ui.Ui_Form):
         else:
             nama = ""
 
+        logger.debug("Open by " + nama)
+
         self.info.setText("SILAKAN MASUK " + nama)
         GPIO.output(config["gpio_pin"]["relay"], 1)
         timeout = False
@@ -434,7 +436,6 @@ class OpenManualThread(QtCore.QThread):
     def run(self):
         while not self.exiting:
             if GPIO.input(config["gpio_pin"]["sensor_pintu"]) == config["features"]["sensor_pintu"]["default_state"] and not GPIO.input(config["gpio_pin"]["saklar_manual"]):
-                logger.debug("Open by switch")
                 ui.buka_pintu()
             else:
                 time.sleep(0.2)
