@@ -882,9 +882,9 @@ if __name__ == "__main__":
     }
 
     logger = logging.getLogger(__name__)
-    logger.setLevel(config["log_level"])
+    logger.setLevel(log_level[config["log_level"]])
     handler = logging.handlers.RotatingFileHandler(log_file_path, maxBytes=1024000, backupCount=100)
-    handler.setLevel(config["log_level"])
+    handler.setLevel(log_level[config["log_level"]])
     formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
     handler.setFormatter(formatter)
     logger.addHandler(handler)
