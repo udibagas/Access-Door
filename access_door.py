@@ -528,6 +528,9 @@ class Console():
                     print "Failed to download template. " + str(e)
                     template.append("")
 
+                if i == 0:
+                    time.sleep(3)
+
         if use_nfc and (daftar_apa == daftar_kartu or daftar_apa == daftar_semua):
             print "Tempelkan kartu..."
 
