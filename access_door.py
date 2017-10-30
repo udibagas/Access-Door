@@ -529,6 +529,7 @@ class Console():
                     template.append("")
 
                 if i == 0:
+                    print "Angkat jari Anda..."
                     time.sleep(3)
 
         if use_nfc and (daftar_apa == daftar_kartu or daftar_apa == daftar_semua):
@@ -947,7 +948,7 @@ if __name__ == "__main__":
             `active` boolean default 1, \
             `allow` boolean default 1, \
             `last_update` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP, \
-            `last_access` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP, \
+            `last_access` timestamp NULL, \
             `waktu_daftar` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP)");
 
         db.execute("CREATE TABLE IF NOT EXISTS `log` ( \
