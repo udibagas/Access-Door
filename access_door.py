@@ -607,15 +607,15 @@ class Console():
     def list(self):
         cur = db.cursor()
         cur.execute(
-            "SELECT `id`, `nama`, `jabatan`, datetime(`waktu_daftar`, 'localtime'), datetime(`last_update`, 'localtime'), datetime(`last_access`, 'localtime') FROM `karyawan` ORDER BY `nama` ASC"
+            "SELECT `id`, `nama`, `jabatan`, `active`, datetime(`waktu_daftar`, 'localtime'), datetime(`last_update`, 'localtime'), datetime(`last_access`, 'localtime') FROM `karyawan` ORDER BY `nama` ASC"
         )
         result = cur.fetchall()
         cur.close()
 
-        data = [["ID", "NAMA", "JABATAN", "WAKTU DAFTAR", "LAST UPDATE", "LAST ACCESS"]]
+        data = [["ID", "NAMA", "JABATAN", "AKTIF", "WAKTU DAFTAR", "LAST UPDATE", "LAST ACCESS"]]
 
         for row, item in enumerate(result):
-            data.append([str(item[0]), item[1], item[2], item[3], item[4], item[5]])
+            data.append([str(item[0]), item[1], item[2], item[3], item[4], item[5], item[6]])
 
         table = AsciiTable(data)
         print table.table
