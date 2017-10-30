@@ -4,6 +4,7 @@ from PyQt4 import QtCore, QtGui
 import binascii
 import PN532
 import sqlite3
+import MySQLdb
 import time
 from datetime import datetime
 from pyfingerprint.pyfingerprint import PyFingerprint
@@ -48,13 +49,11 @@ class Main(QtGui.QWidget, main_ui.Ui_Form):
         if use_fp:
             self.scan_finger_thread = ScanFingerThread()
             self.connect(self.scan_finger_thread, QtCore.SIGNAL('updateInfo'), self.update_info)
-            self.connect(self.scan_finger_thread, QtCore.SIGNAL('playAudio'), self.play_audio)
             self.scan_finger_thread.start()
 
         if use_nfc:
             self.scan_card_thread = ScanCardThread()
             self.connect(self.scan_card_thread, QtCore.SIGNAL('updateInfo'), self.update_info)
-            self.connect(self.scan_card_thread, QtCore.SIGNAL('playAudio'), self.play_audio)
             self.scan_card_thread.start()
 
         self.open_manual_thread = OpenManualThread()
@@ -66,16 +65,6 @@ class Main(QtGui.QWidget, main_ui.Ui_Form):
     def update_clock(self):
         self.tanggal.setText(time.strftime("%d %b %Y"))
         self.jam.setText(time.strftime("%H:%M:%S"))
-
-    def play_audio(self, audio_file, loops=0):
-        audio = os.path.join(os.path.dirname(__file__), audio_file)
-        if os.path.isfile(audio):
-            try:
-                mixer.music.load(audio)
-            except Exception as e:
-                logger.debug("Failed to play " + audio_file + " : " + str(e))
-                return
-            mixer.music.play(loops)
 
     def sync_user(self):
         try:
@@ -144,7 +133,8 @@ class Main(QtGui.QWidget, main_ui.Ui_Form):
             # tambah user kalau ada yang baru
             logger.debug("Adding " + item["nama"] + " to local database...")
             cur.execute(
-                "INSERT INTO `karyawan` (`nama`, `jabatan`, `fp_id`, `card_id`, `template`, `uuid`, `last_update`) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                "INSERT INTO `karyawan` (`nama`, `jabatan`, `fp_id`, `card_id`, `template`, `uuid`, `last_update`) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?)",
                 (item["nama"], item["jabatan"], '***', item["card_id"], item["template"], item["uuid"], item["updated_at"])
             )
 
@@ -168,7 +158,7 @@ class Main(QtGui.QWidget, main_ui.Ui_Form):
             db.commit()
 
     def buka_pintu(self, karyawan=None):
-        self.play_audio('silakan_masuk.ogg')
+        play_audio('silakan_masuk.ogg')
 
         if karyawan:
             nama = karyawan[1].upper()
@@ -191,7 +181,7 @@ class Main(QtGui.QWidget, main_ui.Ui_Form):
         if timeout:
             GPIO.output(config["gpio_pin"]["relay"], 0)
             self.info.setText("WAKTU HABIS")
-            self.play_audio("waktu_habis.ogg")
+            play_audio("waktu_habis.ogg")
             time.sleep(3)
             self.info.setText("TEMPELKAN JARI ATAU KARTU ANDA")
             return
@@ -228,9 +218,9 @@ class Main(QtGui.QWidget, main_ui.Ui_Form):
                 if not alarm:
                     GPIO.output(config["gpio_pin"]["alarm"], 1)
                     self.info.setText("MOHON TUTUP PINTU")
-                    self.play_audio('mohon_tutup_pintu.ogg')
+                    play_audio('mohon_tutup_pintu.ogg')
                     time.sleep(3)
-                    self.play_audio('alarm.ogg', -1)
+                    play_audio('beep.ogg', -1)
                     alarm = True
 
                 time.sleep(0.2)
@@ -292,7 +282,7 @@ class ScanCardThread(QtCore.QThread):
             if GPIO.input(config["gpio_pin"]["sensor_pintu"]) != config["features"]["sensor_pintu"]["default_state"]:
                 continue
 
-            self.emit(QtCore.SIGNAL('playAudio'), "beep.ogg")
+            play_audio("beep.ogg")
             time.sleep(0.2)
             card_id = str(binascii.hexlify(uid))
 
@@ -306,7 +296,7 @@ class ScanCardThread(QtCore.QThread):
                 self.emit(QtCore.SIGNAL('updateInfo'), "TEMPELKAN JARI ATAU KARTU ANDA")
             else:
                 self.emit(QtCore.SIGNAL('updateInfo'), "KARTU TIDAK TERDAFTAR")
-                self.emit(QtCore.SIGNAL('playAudio'), "kartu_tidak_terdaftar.ogg")
+                play_audio("kartu_tidak_terdaftar.ogg")
                 time.sleep(3)
                 self.emit(QtCore.SIGNAL('updateInfo'), "TEMPELKAN JARI ATAU KARTU ANDA")
 
@@ -325,19 +315,16 @@ class ScanFingerThread(QtCore.QThread):
             template = json.loads(tpl)
         except Exception as e:
             raise Exception("Template error. Invalid JSON. " + str(e))
-            return False
 
         try:
             fp.uploadCharacteristics(0x01, template)
         except Exception as e:
             raise Exception("Failed to upload template to fingerprint reader. " + str(e))
-            return False
 
         try:
             return fp.storeTemplate()
         except Exception as e:
             raise Exception("Failed to store template to fingerprint reader. " + str(e))
-            return False
 
     def read_image(self):
         while not fp.readImage():
@@ -375,7 +362,8 @@ class ScanFingerThread(QtCore.QThread):
             if GPIO.input(config["gpio_pin"]["sensor_pintu"]) != config["features"]["sensor_pintu"]["default_state"]:
                 continue
 
-            self.emit(QtCore.SIGNAL('playAudio'), "beep.ogg")
+            play_audio("beep.ogg")
+
 
             # try:
             #     os.remove(os.path.join(os.path.dirname(__file__), "img/fp.png"))
@@ -404,18 +392,22 @@ class ScanFingerThread(QtCore.QThread):
 
             if fp_id == -1:
                 self.emit(QtCore.SIGNAL('updateInfo'), "SIDIK JARI TIDAK DITEMUKAN")
-                self.emit(QtCore.SIGNAL('playAudio'), "sidik_jari_tidak_ditemukan.ogg")
+                play_audio("sidik_jari_tidak_ditemukan.ogg")
                 time.sleep(3)
                 continue
 
             cur = db.cursor()
-            cur.execute("SELECT `id`, `nama`, `uuid`, `last_update` FROM karyawan WHERE `fp_id` = ?", (fp_id,))
+            cur.execute(
+                "SELECT `id`, `nama`, `uuid`, `last_update` \
+                FROM karyawan WHERE `fp_id` = ?",
+                (fp_id,)
+            )
             result = cur.fetchone()
             cur.close()
 
             if not result:
                 self.emit(QtCore.SIGNAL('updateInfo'), "HAK AKSES ANDA TELAH DICABUT")
-                self.emit(QtCore.SIGNAL('playAudio'), "hak_akses_dicabut.ogg")
+                play_audio("hak_akses_dicabut.ogg")
 
                 try:
                     fp.deleteTemplate(fp_id)
@@ -611,7 +603,10 @@ class Console():
 
     def list(self):
         cur = db.cursor()
-        cur.execute("SELECT `id`, `nama`, `jabatan`, `fp_id`, `card_id`, datetime(`waktu_daftar`, 'localtime') FROM `karyawan` ORDER BY `nama` ASC")
+        cur.execute(
+            "SELECT `id`, `nama`, `jabatan`, `fp_id`, `card_id`, datetime(`waktu_daftar`, 'localtime') "
+            "FROM `karyawan` ORDER BY `nama` ASC"
+        )
         result = cur.fetchall()
         cur.close()
 
@@ -625,7 +620,12 @@ class Console():
 
     def log(self):
         cur = db.cursor()
-        cur.execute("SELECT datetime(`log`.`waktu`, 'localtime'), `karyawan`.`nama`, `karyawan`.`jabatan` FROM `log` LEFT JOIN `karyawan` ON `karyawan`.`id` = `log`.`karyawan_id` ORDER BY `log`.`waktu` ASC")
+        cur.execute(
+            "SELECT datetime(`log`.`waktu`, 'localtime'), `karyawan`.`nama`, `karyawan`.`jabatan` "
+            "FROM `log` "
+            "LEFT JOIN `karyawan` ON `karyawan`.`id` = `log`.`karyawan_id` "
+            "ORDER BY `log`.`waktu` ASC"
+        )
         result = cur.fetchall()
         cur.close()
 
@@ -813,7 +813,7 @@ class Console():
                     message = "Starting GUI..."
                     print message
                     subprocess.call("export DISPLAY=:0", shell=True)
-                    subprocess.call("/usr/bin/python " + __file__ + "run &", shell=True)
+                    subprocess.call("/usr/bin/python " + __file__ + " run &", shell=True)
 
                     # logger.debug(message)
                     # mixer.init()
@@ -830,20 +830,33 @@ class Console():
                     pass
 
         except KeyboardInterrupt:
-            print("Bye");
+            print("Bye")
             exit(0)
+
 
 def secs(start_time):
     dt = datetime.now() - start_time
     return dt.seconds
 
+
 def is_running():
     for pid in psutil.pids():
         p = psutil.Process(pid)
-        if p.name() == "python" and len(p.cmdline()) > 1 and __file__ in p.cmdline()[1] and pid != os.getpid():
+        if p.name() == "python" and len(p.cmdline()) > 1 and "access_door.py" in p.cmdline()[1] and pid != os.getpid():
             return pid
 
     return False
+
+
+def play_audio(audio_file, loops=0):
+    audio = os.path.join(os.path.dirname(__file__), audio_file)
+    if os.path.isfile(audio):
+        try:
+            mixer.music.load(audio)
+        except Exception as e:
+            logger.debug("Failed to play " + audio_file + " : " + str(e))
+            return
+        mixer.music.play(loops)
 
 if __name__ == "__main__":
     pid = is_running()
