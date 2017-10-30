@@ -4,7 +4,6 @@ from PyQt4 import QtCore, QtGui
 import binascii
 import PN532
 import sqlite3
-import MySQLdb
 import time
 from datetime import datetime
 from pyfingerprint.pyfingerprint import PyFingerprint
@@ -364,18 +363,6 @@ class ScanFingerThread(QtCore.QThread):
 
             play_audio("beep.ogg")
 
-
-            # try:
-            #     os.remove(os.path.join(os.path.dirname(__file__), "img/fp.png"))
-            # except Exception as e:
-            #     pass
-            #
-            # try:
-            #     fp.downloadImage(os.path.join(os.path.dirname(__file__), "img/fp.png"))
-            #     self.emit(QtCore.SIGNAL('showFpImg'))
-            # except Exception as e:
-            #     logger.debug("Failed to donwload image. " + str(e))
-
             try:
                 fp.convertImage(0x01)
             except Exception as e:
@@ -670,7 +657,6 @@ class Console():
         try:
             id_karyawan = int(id_karyawan)
         except Exception as e:
-            # print "ID yang Anda masukkan salah. " + str(e)
             return
 
         cur = db.cursor()
@@ -814,12 +800,6 @@ class Console():
                     print message
                     subprocess.call("export DISPLAY=:0", shell=True)
                     subprocess.call("/usr/bin/python " + __file__ + " run &", shell=True)
-
-                    # logger.debug(message)
-                    # mixer.init()
-                    # app = QtGui.QApplication(sys.argv)
-                    # ui = Main()
-                    # sys.exit(app.exec_())
                     break
 
                 elif cmd == "sync user":
@@ -934,23 +914,7 @@ if __name__ == "__main__":
         print message
         exit()
 
-    if config["db"]["driver"] == "mysql":
-        try:
-            db = MySQLdb.connect(
-                host=config["db"]["host"],
-                user=config["db"]["user"],
-                passwd=config["db"]["pass"],
-                db=config["db"]["name"]
-            )
-            db.close()
-
-        except Exception as e:
-            message = "Gagal melakukan koneksi ke database. Cek konfigurasi database di config.json. " + str(e)
-            logger.error(message)
-            print message
-            exit()
-
-    elif config["db"]["driver"] == "sqlite":
+    if config["db"]["driver"] == "sqlite":
         logger.debug("Connecting to database...")
         db = sqlite3.connect(os.path.join(os.path.dirname(__file__), config["db"]["name"]), check_same_thread=False)
         logger.debug("Creating database schema...")
@@ -975,7 +939,7 @@ if __name__ == "__main__":
             `waktu` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP)")
 
     else:
-        message = "Koneksi database tidak dikenal (mysql/sqlite)"
+        message = "Currently support sqlite only"
         logger.error(message)
         print message
         exit()
