@@ -68,22 +68,18 @@ class Main(QtGui.QWidget, main_ui.Ui_Form):
     def sync_user(self):
         try:
             r = requests.get(config["api_url"] + "pintu/staff", timeout=3)
+
+            if r.status_code != requests.codes.ok:
+                logger.debug("Failed to sync user. " + str(r.status_code))
+                return
+
+            server_users = r.json()
         except Exception as e:
             logger.debug("Failed to sync user." + str(e))
             return
 
-        if r.status_code != requests.codes.ok:
-            logger.debug("Failed to sync user. " + str(r.status_code))
-            return
-
-        try:
-            server_users = r.json()
-        except Exception as e:
-            logger.debug("Failed to sync user. " + str(e))
-            return
-
         cur = db.cursor()
-        cur.execute("SELECT `uuid`, `nama`, `jabatan`, `last_update` FROM `karyawan`")
+        cur.execute("SELECT `uuid`, `nama`, `jabatan`, `active`, `last_update` FROM `karyawan`")
         results = cur.fetchall()
         cur.close()
 
@@ -110,7 +106,8 @@ class Main(QtGui.QWidget, main_ui.Ui_Form):
             local_users[item[0]] = {
                 "nama": item[1],
                 "jabatan": item[2],
-                "last_update": item[3]
+                "active": item[3],
+                "last_update": item[4]
             }
 
         server_uuids = []
@@ -124,17 +121,17 @@ class Main(QtGui.QWidget, main_ui.Ui_Form):
                 if item["updated_at"] > local_users[item["uuid"]]["last_update"]:
                     logger.debug("Updating " + item["nama"] + "...")
                     cur.execute(
-                        "UPDATE `karyawan` SET `nama` = ?, `jabatan` = ?, `last_update` = ? WHERE `uuid` = ?",
-                        (item["nama"], item["jabatan"], item["updated_at"], item["uuid"])
+                        "UPDATE `karyawan` SET `nama` = ?, `jabatan` = ?, `active` = ?, `last_update` = ? WHERE `uuid` = ?",
+                        (item["nama"], item["jabatan"], item["active"], item["updated_at"], item["uuid"])
                     )
                 continue
 
             # tambah user kalau ada yang baru
             logger.debug("Adding " + item["nama"] + " to local database...")
             cur.execute(
-                "INSERT INTO `karyawan` (`nama`, `jabatan`, `fp_id`, `card_id`, `template`, `uuid`, `last_update`) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?)",
-                (item["nama"], item["jabatan"], '***', item["card_id"], item["template"], item["uuid"], item["updated_at"])
+                "INSERT INTO `karyawan` (`nama`, `jabatan`, `fp_id`, `card_id`, `template`, `uuid`, `active`, `last_update`) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                (item["nama"], item["jabatan"], '***', item["card_id"], item["template"], item["uuid"], item["active"], item["updated_at"])
             )
 
         cur.close()
@@ -198,12 +195,13 @@ class Main(QtGui.QWidget, main_ui.Ui_Form):
 
         try:
             r = requests.post(config["api_url"] + "logPintu", data=data, timeout=3)
-        except Exception as e:
-            logger.debug("GAGAL mengirim log ke server")
 
-        if r.status_code == requests.codes.ok:
-            logger.debug("SUKSES mengirim log ke server")
-        else:
+            if r.status_code == requests.codes.ok:
+                logger.debug("SUKSES mengirim log ke server")
+            else:
+                logger.debug("GAGAL mengirim log ke server")
+
+        except Exception as e:
             logger.debug("GAGAL mengirim log ke server")
 
         open_time = datetime.now()
@@ -246,12 +244,13 @@ class Main(QtGui.QWidget, main_ui.Ui_Form):
 
         try:
             r = requests.post(config["api_url"] + "logPintu", data=data, timeout=3)
-        except Exception as e:
-            logger.debug("GAGAL mengirim log ke server")
 
-        if r.status_code == requests.codes.ok:
-            logger.debug("SUKSES mengirim log ke server")
-        else:
+            if r.status_code == requests.codes.ok:
+                logger.debug("SUKSES mengirim log ke server")
+            else:
+                logger.debug("GAGAL mengirim log ke server")
+
+        except Exception as e:
             logger.debug("GAGAL mengirim log ke server")
 
 
@@ -312,18 +311,12 @@ class ScanFingerThread(QtCore.QThread):
     def save_template(self, tpl):
         try:
             template = json.loads(tpl)
-        except Exception as e:
-            raise Exception("Template error. Invalid JSON. " + str(e))
-
-        try:
             fp.uploadCharacteristics(0x01, template)
-        except Exception as e:
-            raise Exception("Failed to upload template to fingerprint reader. " + str(e))
-
-        try:
             return fp.storeTemplate()
         except Exception as e:
             raise Exception("Failed to store template to fingerprint reader. " + str(e))
+
+        return -1
 
     def read_image(self):
         while not fp.readImage():
@@ -336,18 +329,21 @@ class ScanFingerThread(QtCore.QThread):
             results = cur.fetchall()
             cur.close()
 
+            cur = db.cursor()
+
             for row, item in enumerate(results):
                 try:
                     fp_id = self.save_template(item[1])
+
+                    if fp_id >= 0:
+                        cur.execute("UPDATE `karyawan` SET `fp_id` = ? WHERE `id` = ?", (fp_id, item[0]))
+                        
                 except Exception as e:
                     logger.error("Failed to save template." + str(e))
                     continue
 
-                if fp_id >= 0:
-                    cur = db.cursor()
-                    cur.execute("UPDATE `karyawan` SET `fp_id` = ? WHERE `id` = ?", (fp_id, item[0]))
-                    cur.close()
-                    db.commit()
+            cur.close()
+            db.commit()
 
             self.emit(QtCore.SIGNAL('updateInfo'), "TEMPELKAN JARI ATAU KARTU ANDA")
 
@@ -365,11 +361,6 @@ class ScanFingerThread(QtCore.QThread):
 
             try:
                 fp.convertImage(0x01)
-            except Exception as e:
-                logger.debug("Failed to convert image. " + str(e))
-                continue
-
-            try:
                 result = fp.searchTemplate()
             except Exception as e:
                 logger.debug("Failed to search template. " + str(e))
@@ -385,7 +376,7 @@ class ScanFingerThread(QtCore.QThread):
 
             cur = db.cursor()
             cur.execute(
-                "SELECT `id`, `nama`, `uuid`, `last_update` \
+                "SELECT `id`, `nama`, `uuid`, `active`, `last_update` \
                 FROM karyawan WHERE `fp_id` = ?",
                 (fp_id,)
             )
@@ -401,6 +392,12 @@ class ScanFingerThread(QtCore.QThread):
                 except Exception as e:
                     logger.debug("Template gagal dihapus." + str(e))
 
+                time.sleep(3)
+                continue
+
+            if result[3] == 0:
+                self.emit(QtCore.SIGNAL('updateInfo'), "AKUN ANDA NON AKTIF")
+                play_audio("akun_non_aktif.ogg")
                 time.sleep(3)
                 continue
 
@@ -463,14 +460,9 @@ class Console():
 
             try:
                 fp.convertImage(0x01)
-            except Exception as e:
-                print "Error convert image on buffer 0x01. " + str(e)
-                return
-
-            try:
                 result = fp.searchTemplate()
             except Exception as e:
-                print "Error search template. " + str(e)
+                print "Failed to search template. " + str(e)
                 return
 
             positionNumber = result[0]
@@ -484,7 +476,7 @@ class Console():
 
             print('Tempelkan jari yang sama...')
             while not fp.readImage():
-                time.sleep(0.2)
+                time.sleep(config["timer"]["scan"])
 
             try:
                 fp.convertImage(0x02)
@@ -498,11 +490,6 @@ class Console():
 
             try:
                 fp.createTemplate()
-            except Exception as e:
-                print "Failed to create template. " + str(e)
-                return
-
-            try:
                 fp_id = fp.storeTemplate()
             except Exception as e:
                 print "Failed to store template." + str(e)
@@ -510,11 +497,6 @@ class Console():
 
             try:
                 fp.loadTemplate(fp_id, 0x01)
-            except Exception as e:
-                print "Failed to load template." + str(e)
-                return
-
-            try:
                 template = json.dumps(fp.downloadCharacteristics(0x01))
             except Exception as e:
                 print "Failed to download template. Template will be generated next time."
@@ -579,14 +561,12 @@ class Console():
 
         try:
             r = requests.post(config["api_url"] + "staff", data=data, timeout=3)
+            if r.status_code == requests.codes.ok:
+                print "Sync staff data OK!"
+            else:
+                print "Sync staff data FAILED! " + str(r.status_code)
         except Exception as e:
             print "Sync staff data FAILED!" + str(e)
-            return
-
-        if r.status_code == requests.codes.ok:
-            print "Sync staff data OK!"
-        else:
-            print "Sync staff data FAILED! " + str(r.status_code)
 
     def list(self):
         cur = db.cursor()
