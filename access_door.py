@@ -185,6 +185,7 @@ class Main(QtGui.QWidget, main_ui.Ui_Form):
         if karyawan:
             cur = db.cursor()
             cur.execute("INSERT INTO `log` (`karyawan_id`) VALUES (?)", (karyawan[0],))
+            cur.execute("UPDATE `karyawan` SET `last_access` = CURRENT_TIMESTAMP WHERE `id` = ?", (karyawan[0]))
             cur.close()
             db.commit()
 
@@ -602,16 +603,15 @@ class Console():
     def list(self):
         cur = db.cursor()
         cur.execute(
-            "SELECT `id`, `nama`, `jabatan`, datetime(`waktu_daftar`, 'localtime'), datetime(`last_update`, 'localtime') "
-            "FROM `karyawan` ORDER BY `nama` ASC"
+            "SELECT `id`, `nama`, `jabatan`, datetime(`waktu_daftar`, 'localtime'), datetime(`last_update`, 'localtime'), datetime(`last_access`, 'localtime') FROM `karyawan` ORDER BY `nama` ASC"
         )
         result = cur.fetchall()
         cur.close()
 
-        data = [["ID", "NAMA", "JABATAN", "WAKTU DAFTAR", "LAST UPDATE"]]
+        data = [["ID", "NAMA", "JABATAN", "WAKTU DAFTAR", "LAST UPDATE", "LAST ACCESS"]]
 
         for row, item in enumerate(result):
-            data.append([str(item[0]), item[1], item[2], item[3], item[4]])
+            data.append([str(item[0]), item[1], item[2], item[3], item[4], item[5]])
 
         table = AsciiTable(data)
         print table.table
@@ -671,17 +671,17 @@ class Console():
             return
 
         cur = db.cursor()
-        cur.execute("SELECT `id`, `nama`, `jabatan`, `uuid` FROM `karyawan` WHERE id = ?", (id_karyawan,))
+        cur.execute("SELECT `id`, `nama`, `jabatan`, `fp_id`, `fp_id1` FROM `karyawan` WHERE id = ?", (id_karyawan,))
         result = cur.fetchone()
         cur.close()
 
-        if not result:
+        if result is None:
             print "ID karyawan tidak ditemukan."
             return
 
         data = [
-            ["ID", "NAMA", "JABATAN", "WAKTU DAFTAR"],
-            [str(result[0]), result[1], result[2], result[3]]
+            ["ID", "NAMA", "JABATAN"],
+            [str(result[0]), result[1], result[2]]
         ]
 
         table = AsciiTable(data)
@@ -699,6 +699,7 @@ class Console():
 
         try:
             fp.deleteTemplate(int(result[3]))
+            fp.deleteTemplate(int(result[4]))
         except Exception as e:
             print "Gagal menghapus template sidik jari. " + str(e)
 
@@ -943,6 +944,7 @@ if __name__ == "__main__":
             `active` boolean default 1, \
             `allow` boolean default 1, \
             `last_update` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP, \
+            `last_access` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP, \
             `waktu_daftar` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP)");
 
         db.execute("CREATE TABLE IF NOT EXISTS `log` ( \
