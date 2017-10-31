@@ -58,6 +58,7 @@ class Main(QtGui.QWidget, main_ui.Ui_Form):
             self.scan_card_thread.start()
 
         self.open_manual_thread = OpenManualThread()
+        self.connect(self.open_manual_thread, QtCore.SIGNAL('updateInfo'), self.update_info)
         self.connect(self.open_manual_thread, QtCore.SIGNAL('updateImage'), self.update_image)
         self.open_manual_thread.start()
 
@@ -463,6 +464,8 @@ class OpenManualThread(QtCore.QThread):
                 time.sleep(0.2)
                 self.emit(QtCore.SIGNAL('updateImage'), "img/right-80.png")
                 ui.buka_pintu()
+                self.emit(QtCore.SIGNAL('updateInfo'), "TEMPELKAN JARI ATAU KARTU ANDA")
+                self.emit(QtCore.SIGNAL('updateImage'), "img/scan-80.png")
             else:
                 time.sleep(0.2)
 
