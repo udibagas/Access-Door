@@ -347,7 +347,6 @@ class ScanFingerThread(QtCore.QThread):
         except Exception as e:
             message = "Failed to store template to fingerprint reader. " + str(e)
             logger.debug(message)
-            raise Exception(message)
 
         return -1
 
