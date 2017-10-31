@@ -378,6 +378,8 @@ class ScanFingerThread(QtCore.QThread):
                     else:
                         fp_id.append(self.save_template(item[4]))
 
+                    logger.debug(str(fp_id))
+                    
                     if fp_id[0] >= 0 or fp_id[1] >= 0:
                         cur.execute("UPDATE `karyawan` SET `fp_id` = ?, `fp_id1` = ? WHERE `id` = ?", (fp_id[0], fp_id[1], item[0]))
 

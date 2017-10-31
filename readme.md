@@ -114,10 +114,9 @@ $ sudo reboot
 ## Package Dependency
 
 ```
-$ sudo apt install python-pysqlite2 python-texttable python-qt4
+$ sudo apt install python-pysqlite2 python-texttable python-qt4 python-psutil
 $ sudo pip install terminaltables
 $ sudo pip install pygame
-$ sudo pip install psutil
 ```
 
 Install pyfingerprint.
