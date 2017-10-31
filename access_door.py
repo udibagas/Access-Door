@@ -365,26 +365,19 @@ class ScanFingerThread(QtCore.QThread):
             cur = db.cursor()
 
             for row, item in enumerate(results):
-                try:
-                    fp_id = []
+                fp_id = []
 
-                    if int(item[1]) >= 0:
-                        fp_id.append(item[1])
-                    else:
-                        fp_id.append(self.save_template(item[3]))
+                if int(item[1]) >= 0:
+                    fp_id.append(item[1])
+                else:
+                    fp_id.append(self.save_template(item[3]))
 
-                    if int(item[2]) >= 0:
-                        fp_id.append(item[2])
-                    else:
-                        fp_id.append(self.save_template(item[4]))
+                if int(item[2]) >= 0:
+                    fp_id.append(item[2])
+                else:
+                    fp_id.append(self.save_template(item[4]))
 
-                    logger.debug(str(fp_id))
-                    
-                    if fp_id[0] >= 0 or fp_id[1] >= 0:
-                        cur.execute("UPDATE `karyawan` SET `fp_id` = ?, `fp_id1` = ? WHERE `id` = ?", (fp_id[0], fp_id[1], item[0]))
-
-                except Exception as e:
-                    continue
+                cur.execute("UPDATE `karyawan` SET `fp_id` = ?, `fp_id1` = ? WHERE `id` = ?", (fp_id[0], fp_id[1], item[0]))
 
             cur.close()
             db.commit()
