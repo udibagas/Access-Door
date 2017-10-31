@@ -358,7 +358,7 @@ class ScanFingerThread(QtCore.QThread):
     def run(self):
         while not self.exiting:
             cur = db.cursor()
-            cur.execute("SELECT `id`, `template`, `template1` FROM `karyawan` WHERE `fp_id` = '-1' OR `fp_id1` = '-1'")
+            cur.execute("SELECT `id`, `fp_id`, `fp_id1`, `template`, `template1` FROM `karyawan` WHERE `fp_id` = '-1' OR `fp_id1` = '-1'")
             results = cur.fetchall()
             cur.close()
 
@@ -367,8 +367,16 @@ class ScanFingerThread(QtCore.QThread):
             for row, item in enumerate(results):
                 try:
                     fp_id = []
-                    fp_id.append(self.save_template(item[1]))
-                    fp_id.append(self.save_template(item[2]))
+
+                    if int(item[1]) >= 0:
+                        fp_id.append(item[1])
+                    else:
+                        fp_id.append(self.save_template(item[3]))
+
+                    if int(item[2]) >= 0:
+                        fp_id.append(item[2])
+                    else:
+                        fp_id.append(self.save_template(item[4]))
 
                     if fp_id[0] >= 0 or fp_id[1] >= 0:
                         cur.execute("UPDATE `karyawan` SET `fp_id` = ?, `fp_id1` = ? WHERE `id` = ?", (fp_id[0], fp_id[1], item[0]))
