@@ -479,7 +479,7 @@ class Console():
 
     def daftar(self):
         if not use_nfc and not use_fp:
-            print "NFC reader dan Fingerprint reader tidak ditemukan!"
+            print("NFC reader dan Fingerprint reader tidak ditemukan!")
             return
 
         nama = raw_input("Nama: ")
@@ -493,7 +493,7 @@ class Console():
         daftar_semua = 3
 
         if not nama or not jabatan:
-            print "Nama dan jabatan harus diisi. Silakan ulangi kembali"
+            print("Nama dan jabatan harus diisi. Silakan ulangi kembali")
             return
 
         while daftar_apa not in range(1,4):
@@ -506,7 +506,7 @@ class Console():
         if use_fp and (daftar_apa == daftar_sidik_jari or daftar_apa == daftar_semua):
 
             for i in range(0,2):
-                print('Tempelkan jari Anda...')
+                print("Tempelkan jari Anda...")
 
                 while not fp.readImage():
                     time.sleep(config["timer"]["scan"])
@@ -515,13 +515,13 @@ class Console():
                     fp.convertImage(0x01)
                     result = fp.searchTemplate()
                 except Exception as e:
-                    print "Failed to search template. " + str(e)
+                    print("Failed to search template. " + str(e))
                     return
 
                 positionNumber = result[0]
 
                 if positionNumber >= 0:
-                    print('Jari sudah terdaftar. Silakan ulangi kembali')
+                    print("Jari sudah terdaftar. Silakan ulangi kembali")
                     if i == 1:
                         try:
                             fp.deleteTemplate(fp_id[0])
@@ -539,18 +539,18 @@ class Console():
                 try:
                     fp.convertImage(0x02)
                 except Exception as e:
-                    print "Error convert image on buffer 0x02. " + str(e)
+                    print("Error convert image on buffer 0x02. " + str(e))
                     return
 
                 if not fp.compareCharacteristics():
-                    print "Sidik jari tidak sama. Silakan ulangi kembali"
+                    print("Sidik jari tidak sama. Silakan ulangi kembali")
                     return
 
                 try:
                     fp.createTemplate()
                     fp_id.append(fp.storeTemplate())
                 except Exception as e:
-                    print "Failed to store template." + str(e)
+                    print("Failed to store template." + str(e))
                     fp_id.append("-1")
                     return
 
@@ -558,15 +558,15 @@ class Console():
                     fp.loadTemplate(fp_id[i], 0x01)
                     template.append(json.dumps(fp.downloadCharacteristics(0x01)))
                 except Exception as e:
-                    print "Failed to download template. " + str(e)
+                    print("Failed to download template. " + str(e))
                     template.append("")
 
                 if i == 0:
-                    print "Angkat jari Anda..."
+                    print("Angkat jari Anda...")
                     time.sleep(3)
 
         if use_nfc and (daftar_apa == daftar_kartu or daftar_apa == daftar_semua):
-            print "Tempelkan kartu..."
+            print("Tempelkan kartu...")
 
             while True:
                 try:
@@ -588,17 +588,17 @@ class Console():
             cur.close()
 
             if result:
-                print "Kartu sudah terdaftar atas nama " + result[1]
+                print("Kartu sudah terdaftar atas nama " + result[1])
 
                 try:
                     fp.deleteTemplate(int(result[1]))
                     fp.deleteTemplate(int(result[2]))
                 except Exception as e:
-                    print "Failed to delete template. " + str(e)
+                    print("Failed to delete template. " + str(e))
                     return
 
         if fp_id[0] == "-1" and card_id == "***":
-            print "Pendaftaran GAGAL. Gagal membaca sidik jari dan kartu."
+            print("Pendaftaran GAGAL. Gagal membaca sidik jari dan kartu.")
             return
 
         UUID = str(uuid.uuid4())
@@ -614,10 +614,10 @@ class Console():
             cur.close()
             db.commit()
         except Exception as e:
-            print "Pendaftaran GAGAL! " + str(e)
+            print("Pendaftaran GAGAL! " + str(e))
             return
 
-        print "Pendaftaran BERHASIL!"
+        print("Pendaftaran BERHASIL!")
         data = {
             "nama": nama,
             "jabatan": jabatan,
@@ -626,16 +626,16 @@ class Console():
             "template1": template[1],
             "uuid": UUID
         }
-        print "Syncing staff data to server..."
+        print("Syncing staff data to server...")
 
         try:
             r = requests.post(config["api_url"] + "staff", data=data, timeout=3)
             if r.status_code == requests.codes.ok:
-                print "Sync staff data OK!"
+                print("Sync staff data OK!")
             else:
-                print "Sync staff data FAILED! " + str(r.status_code)
+                print("Sync staff data FAILED! " + str(r.status_code))
         except Exception as e:
-            print "Sync staff data FAILED!" + str(e)
+            print("Sync staff data FAILED!" + str(e))
 
     def list(self):
         cur = db.cursor()
@@ -651,7 +651,7 @@ class Console():
             data.append([str(item[0]), item[1], item[2], item[3], item[4], item[5], item[6]])
 
         table = AsciiTable(data)
-        print table.table
+        print(table.table)
 
     def log(self):
         cur = db.cursor()
@@ -670,7 +670,7 @@ class Console():
             data.append([str(item[0]), item[1], item[2]])
 
         table = AsciiTable(data)
-        print table.table
+        print(table.table)
 
     def clear_database(self):
         confirm = raw_input("Anda yakin (y/N)? ")
@@ -686,7 +686,7 @@ class Console():
         try:
             fp.clearDatabase()
         except Exception as e:
-            print "Failed to clear database. " + str(e)
+            print("Failed to clear database. " + str(e))
 
     def clear_log(self):
         confirm = raw_input("Anda yakin (y/N)? ")
@@ -713,7 +713,7 @@ class Console():
         cur.close()
 
         if result is None:
-            print "ID karyawan tidak ditemukan."
+            print("ID karyawan tidak ditemukan.")
             return
 
         data = [
@@ -722,7 +722,7 @@ class Console():
         ]
 
         table = AsciiTable(data)
-        print table.table
+        print(table.table)
 
         confirm = raw_input("Anda yakin akan menghapus karyawan ini (y/n)?")
         if confirm != "y":
@@ -732,13 +732,13 @@ class Console():
         cur.execute("DELETE FROM `karyawan` WHERE id = ?", (id_karyawan,))
         cur.close()
         db.commit()
-        print "Data karyawan berhasil dihapus"
+        print("Data karyawan berhasil dihapus")
 
         try:
             fp.deleteTemplate(int(result[3]))
             fp.deleteTemplate(int(result[4]))
         except Exception as e:
-            print "Gagal menghapus template sidik jari. " + str(e)
+            print("Gagal menghapus template sidik jari. " + str(e))
 
     def sync_user(self):
         confirm = raw_input("Anda yakin (y/n)? ")
@@ -760,28 +760,28 @@ class Console():
                 "template1": item[5],
                 "uuid": item[6]
             }
-            print "Syncing " + item[1] + "..."
+            print("Syncing " + item[1] + "...")
 
             try:
                 r = requests.post(config["api_url"] + "staff", data=data, timeout=3)
             except Exception as e:
-                print "Sync staff data FAILED!" + str(e)
+                print("Sync staff data FAILED!" + str(e))
                 continue
 
             if r.status_code == requests.codes.ok:
                 try:
                     res = r.json()
-                    print "Sync " + res["nama"] + " OK!"
+                    print("Sync " + res["nama"] + " OK!")
                 except Exception as e:
-                    print "Sync staff data FAILED!" + str(e)
+                    print("Sync staff data FAILED!" + str(e))
             else:
-                print "Sync staff data FAILED! " + str(r.status_code)
+                print("Sync staff data FAILED! " + str(r.status_code))
 
     def buka_pintu(self):
         if GPIO.input(config["gpio_pin"]["sensor_pintu"]) != config["features"]["sensor_pintu"]["default_state"]:
-            print "Pintu sudah terbuka"
+            print("Pintu sudah terbuka")
         else:
-            print "Silakan masuk..."
+            print("Silakan masuk...")
             GPIO.output(config["gpio_pin"]["relay"], 1)
             time.sleep(config["timer"]["open_duration"])
             GPIO.output(config["gpio_pin"]["relay"], 0)
@@ -791,9 +791,9 @@ class Console():
 
     def status_pintu(self):
         if GPIO.input(config["gpio_pin"]["sensor_pintu"]) == config["features"]["sensor_pintu"]["default_state"]:
-            print "TERTUTUP"
+            print("TERTUTUP")
         else:
-            print "TERBUKA"
+            print("TERBUKA")
 
     def help(self):
         data = [
@@ -814,7 +814,7 @@ class Console():
         ]
 
         table = AsciiTable(data)
-        print table.table
+        print(table.table)
 
     def run(self):
         try:
@@ -841,12 +841,11 @@ class Console():
                 elif cmd == "help" or cmd == "?":
                     self.help()
                 elif cmd == "exit" or cmd == "quit":
-                    print "Bye"
+                    print("Bye")
                     break
 
                 elif cmd == "run":
-                    message = "Starting GUI..."
-                    print message
+                    print("Starting GUI...")
                     subprocess.call("export DISPLAY=:0", shell=True)
                     subprocess.call("/usr/bin/python " + __file__ + " run &", shell=True)
                     break
@@ -854,7 +853,7 @@ class Console():
                 elif cmd == "sync user":
                     self.sync_user()
                 elif cmd.strip():
-                    print "Perintah tidak dikenal. Ketik '?' untuk bantuan."
+                    print("Perintah tidak dikenal. Ketik '?' untuk bantuan.")
                 else:
                     pass
 
@@ -891,18 +890,18 @@ if __name__ == "__main__":
     pid = is_running()
 
     if pid:
-        print "aplikasi sudah berjalan dengan PID: " + str(pid)
+        print("aplikasi sudah berjalan dengan PID: " + str(pid))
         subprocess.call("kill -9 " + str(pid), shell=True)
 
     log_file_path = os.path.join(os.path.dirname(__file__), 'access_door.log')
     config_file_path = os.path.join(os.path.dirname(__file__), 'config.json')
 
     try:
-        print "Reading config file..."
+        print("Reading config file...")
         with open(config_file_path) as config_file:
             config = json.load(config_file)
     except Exception as e:
-        print "Gagal membuka file konfigurasi (config.json). " + str(e)
+        print("Gagal membuka file konfigurasi (config.json). " + str(e))
         exit()
 
     log_level = {
@@ -932,7 +931,7 @@ if __name__ == "__main__":
         if not fp.verifyPassword():
             message = 'Password fingerprint salah!'
             logger.error(message)
-            print message
+            print(message)
 
         logger.debug("Fingerprint reader OK!")
         use_fp = True
@@ -940,7 +939,7 @@ if __name__ == "__main__":
     except Exception as e:
         message = 'Gagal menginisialisasi fingerprint!' + str(e)
         logger.error(message)
-        print message
+        print(message)
 
     try:
         # todo: ini biasanya lama banget. harus dikasih timeout
@@ -954,13 +953,13 @@ if __name__ == "__main__":
     except Exception as e:
         message = "NFC Reader tidak ditemukan. " + str(e)
         logger.error(message)
-        print message
+        print(message)
 
     if not use_fp and not use_nfc:
         message = "Fingerprint reader dan NFC reader tidak ditemukan"
         logger.error(message)
         logger.debug("Exit")
-        print message
+        print(message)
         exit()
 
     if config["db"]["driver"] == "sqlite":
@@ -992,7 +991,7 @@ if __name__ == "__main__":
     else:
         message = "Currently support sqlite only"
         logger.error(message)
-        print message
+        print(message)
         exit()
 
     GPIO.setmode(GPIO.BOARD)
