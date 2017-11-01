@@ -1,5 +1,6 @@
 #!/usr/bin/python
 
+from __future__ import print_function
 from PyQt4 import QtCore, QtGui
 import binascii
 import PN532
@@ -892,6 +893,7 @@ if __name__ == "__main__":
     if pid:
         print("Aplikasi sudah berjalan dengan PID: " + str(pid))
         print("Matikan dengan mengetik perintah 'kill", pid, "'")
+        exit()
         # subprocess.call("kill -9 " + str(pid), shell=True)
 
     log_file_path = os.path.join(os.path.dirname(__file__), 'access_door.log')
