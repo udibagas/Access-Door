@@ -19,7 +19,6 @@ import json
 import logging
 import logging.handlers
 import uuid
-from threading import Thread
 from pygame import mixer
 import psutil
 
@@ -788,7 +787,7 @@ class Console():
             GPIO.output(config["gpio_pin"]["relay"], 0)
 
     def check_memory_fp(self):
-        print str(fp.getTemplateCount()) + '/' + str(fp.getStorageCapacity())
+        print(str(fp.getTemplateCount()) + '/' + str(fp.getStorageCapacity()))
 
     def status_pintu(self):
         if GPIO.input(config["gpio_pin"]["sensor_pintu"]) == config["features"]["sensor_pintu"]["default_state"]:
