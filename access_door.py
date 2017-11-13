@@ -34,7 +34,6 @@ class Main(QtGui.QWidget, main_ui.Ui_Form):
 
         self.update_clock()
         self.sync_user()
-
         self.showFullScreen()
 
         self.timer = QtCore.QTimer()
