@@ -31,6 +31,7 @@ class Main(QtGui.QWidget, main_ui.Ui_Form):
         self.info.setText("TEMPELKAN JARI ATAU KARTU ANDA")
         self.instansi.setText(config["instansi"])
         self.logo.setPixmap(QtGui.QPixmap(os.path.join(os.path.dirname(__file__), config["logo"])))
+        GPIO.output(config["gpio_pin"]["relay"], 1)
 
         self.update_clock()
         self.sync_user()
@@ -172,7 +173,7 @@ class Main(QtGui.QWidget, main_ui.Ui_Form):
         logger.debug("Open by " + nama)
 
         self.info.setText("SILAKAN MASUK " + nama)
-        GPIO.output(config["gpio_pin"]["relay"], 1)
+        GPIO.output(config["gpio_pin"]["relay"], 0)
         timeout = False
         alarm = False
         start_time = datetime.now()
@@ -185,7 +186,7 @@ class Main(QtGui.QWidget, main_ui.Ui_Form):
                     break
 
         if timeout:
-            GPIO.output(config["gpio_pin"]["relay"], 0)
+            GPIO.output(config["gpio_pin"]["relay"], 1)
             self.info.setText("WAKTU HABIS")
             self.emit(QtCore.SIGNAL('updateImage'), "img/time-80.png")
             play_audio("waktu_habis.ogg")
@@ -247,7 +248,8 @@ class Main(QtGui.QWidget, main_ui.Ui_Form):
                 pass
 
         # tutup pintu
-        GPIO.output(config["gpio_pin"]["relay"], 0)
+        time.sleep(1)
+        GPIO.output(config["gpio_pin"]["relay"], 1)
 
         # simpan log ke server (tutup)
         if nama == "":
@@ -289,8 +291,9 @@ class ScanCardThread(QtCore.QThread):
             if uid is "no_card":
                 continue
 
-            if GPIO.input(config["gpio_pin"]["sensor_pintu"]) != config["features"]["sensor_pintu"]["default_state"]:
-                continue
+            # skip when door already opened (khusus kementan)
+            # if GPIO.input(config["gpio_pin"]["sensor_pintu"]) != config["features"]["sensor_pintu"]["default_state"]:
+            #     continue
 
             play_audio("beep.ogg")
             time.sleep(0.2)
@@ -390,9 +393,9 @@ class ScanFingerThread(QtCore.QThread):
                 logger.error("Fingerprint error. " + str(e))
                 continue
 
-            # skip when door is opened
-            if GPIO.input(config["gpio_pin"]["sensor_pintu"]) != config["features"]["sensor_pintu"]["default_state"]:
-                continue
+            # skip when door is opened (khusus buat kementan)
+            # if GPIO.input(config["gpio_pin"]["sensor_pintu"]) != config["features"]["sensor_pintu"]["default_state"]:
+            #     continue
 
             play_audio("beep.ogg")
 
@@ -809,6 +812,9 @@ class Console():
             ['status pintu', 'Status pintu'],
             ['run', 'Menjalankan program akses pintu GUI'],
             ['sync user', 'Sync user data ke server'],
+            ['test audio', 'Test audio'],
+            ['test nfc', 'Test ncf'],
+            ['test fingerprint', 'Test fingerprint'],
             ['exit', 'Keluar dari progam CLI']
         ]
 
