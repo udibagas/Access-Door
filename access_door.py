@@ -934,6 +934,8 @@ if __name__ == "__main__":
     use_nfc = False
     use_fp = False
 
+    # waiting fingerprint ready
+    time.sleep(3)
     try:
         logger.debug("Initializing fingerprint reader...")
         fp = PyFingerprint(config["device"]["fp"], 57600, 0xFFFFFFFF, 0x00000000)
@@ -951,6 +953,8 @@ if __name__ == "__main__":
         logger.error(message)
         print(message)
 
+    # waiting nfc ready
+    time.sleep(3)
     try:
         # todo: ini biasanya lama banget. harus dikasih timeout
         logger.debug("Initializing NFC Reader...")
