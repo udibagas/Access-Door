@@ -247,8 +247,9 @@ class Main(QtGui.QWidget, main_ui.Ui_Form):
             except Exception as e:
                 pass
 
-        # tutup pintu
+        # delay 1 detik biar sensor positioning pintu pas
         time.sleep(1)
+        # tutup pintu
         GPIO.output(config["gpio_pin"]["relay"], 1)
 
         # simpan log ke server (tutup)
@@ -391,6 +392,8 @@ class ScanFingerThread(QtCore.QThread):
                 self.read_image()
             except Exception as e:
                 logger.error("Fingerprint error. " + str(e))
+                # delay for recovery
+                time.sleep(1)
                 continue
 
             # skip when door is opened (khusus buat kementan)
