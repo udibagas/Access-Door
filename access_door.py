@@ -936,38 +936,42 @@ if __name__ == "__main__":
 
     # waiting fingerprint ready
     time.sleep(3)
-    try:
-        logger.debug("Initializing fingerprint reader...")
-        fp = PyFingerprint(config["device"]["fp"], 57600, 0xFFFFFFFF, 0x00000000)
+    for i in [1,2,3]:
+        try:
+            logger.debug("Initializing fingerprint reader...(attemp :"+str(i)+")")
+            fp = PyFingerprint(config["device"]["fp"], 57600, 0xFFFFFFFF, 0x00000000)
 
-        if not fp.verifyPassword():
-            message = 'Password fingerprint salah!'
+            if not fp.verifyPassword():
+                message = 'Password fingerprint salah!'
+                logger.error(message)
+                print(message)
+
+            logger.debug("Fingerprint reader OK!")
+            use_fp = True
+            break
+
+        except Exception as e:
+            message = 'Gagal menginisialisasi fingerprint!' + str(e)
             logger.error(message)
             print(message)
 
-        logger.debug("Fingerprint reader OK!")
-        use_fp = True
-
-    except Exception as e:
-        message = 'Gagal menginisialisasi fingerprint!' + str(e)
-        logger.error(message)
-        print(message)
-
     # waiting nfc ready
     time.sleep(3)
-    try:
-        # todo: ini biasanya lama banget. harus dikasih timeout
-        logger.debug("Initializing NFC Reader...")
-        pn532 = PN532.PN532(config["device"]["nfc"], 115200)
-        pn532.begin()
-        pn532.SAM_configuration()
-        logger.debug("NFC Reader OK!")
-        use_nfc = True
+    for i in [1,2,3]:
+        try:
+            # todo: ini biasanya lama banget. harus dikasih timeout
+            logger.debug("Initializing NFC Reader...(attemp: "+str(i)+")")
+            pn532 = PN532.PN532(config["device"]["nfc"], 115200)
+            pn532.begin()
+            pn532.SAM_configuration()
+            logger.debug("NFC Reader OK!")
+            use_nfc = True
+            break
 
-    except Exception as e:
-        message = "NFC Reader tidak ditemukan. " + str(e)
-        logger.error(message)
-        print(message)
+        except Exception as e:
+            message = "NFC Reader tidak ditemukan. " + str(e)
+            logger.error(message)
+            print(message)
 
     if not use_fp and not use_nfc:
         message = "Fingerprint reader dan NFC reader tidak ditemukan"
