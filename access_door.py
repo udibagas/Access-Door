@@ -1021,7 +1021,7 @@ if __name__ == "__main__":
 
     if len(sys.argv) > 1 and sys.argv[1] == "run":
         mixer.init()
-        mixer.music.set_volume(10)
+        mixer.music.set_volume(1.0)
         logger.debug("Starting GUI...")
         app = QtGui.QApplication(sys.argv)
         ui = Main()
