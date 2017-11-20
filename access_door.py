@@ -20,7 +20,7 @@ import logging
 import logging.handlers
 import uuid
 from pygame import mixer
-import psutil
+# import psutil
 
 
 class Main(QtGui.QWidget, main_ui.Ui_Form):
@@ -895,12 +895,12 @@ def play_audio(audio_file, loops=0):
         mixer.music.play(loops)
 
 if __name__ == "__main__":
-    pid = is_running()
-
-    if pid:
-        print("Aplikasi sudah berjalan dengan PID: " + str(pid))
-        print("Matikan dengan mengetik perintah 'kill", pid, "'")
-        exit()
+    # pid = is_running()
+    #
+    # if pid:
+    #     print("Aplikasi sudah berjalan dengan PID: " + str(pid))
+    #     print("Matikan dengan mengetik perintah 'kill", pid, "'")
+    #     exit()
         # subprocess.call("kill -9 " + str(pid), shell=True)
 
     log_file_path = os.path.join(os.path.dirname(__file__), 'access_door.log')
